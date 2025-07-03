@@ -1,0 +1,172 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 🌐 크로스 플랫폼/하드웨어/버전 호환성 규칙 (필수)
+
+---
+
+## 1. 경로 처리
+- 모든 경로는 반드시 `os.path.join()` 또는 `pathlib.Path`를 사용한다.
+- 하드코딩된 경로(`C:\`, `/home/`, `\` 등)는 절대 금지.
+- 프로젝트 루트 기준 경로는 `Path(__file__).parent.parent` 등으로 동적으로 계산한다.
+
+```python
+# ❌ 절대 금지
+model_path = "C:\\models\\model.onnx"      # Windows 전용
+model_path = "/home/user/models/model.onnx" # Linux 전용
+model_path = "models\\weights\\model.onnx"  # 백슬래시
+
+# ✅ 필수
+import os
+from pathlib import Path
+model_path = os.path.join("models", "weights", "model.onnx")
+config_path = Path("config") / "face_recognition.yaml"
+project_root = Path(__file__).parent.parent
+model_path = project_root / "models" / "weights" / "model.onnx"
+```
+
+---
+
+## 2. 하드웨어 환경 자동 감지 및 최적화
+- 반드시 현재 환경(Windows/Ubuntu/Jetson/RTX5090/노트북)을 자동 감지하여 최적화 설정을 적용한다.
+- Jetson 환경은 `/proc/device-tree/model`에서 "jetson" 문자열로 감지한다.
+- ONNX Runtime 세션 생성 시 플랫폼별 최적화 프로바이더(TensorRT, CUDA, CPU)를 자동 선택한다.
+
+```python
+def get_optimal_config():
+    import platform, psutil
+    system = platform.system().lower()
+    cpu_count = psutil.cpu_count()
+    memory_gb = psutil.virtual_memory().total // (1024**3)
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory // (1024**3) if gpu_available else 0
+    except:
+        gpu_available = False
+        gpu_memory = 0
+    if gpu_available and gpu_memory >= 16:
+        return {"device": "cuda", "batch_size": 16, "model_size": "large", "precision": "fp16"}
+    elif gpu_available and gpu_memory >= 4:
+        return {"device": "cuda", "batch_size": 4, "model_size": "medium", "precision": "fp16"}
+    else:
+        return {"device": "cpu", "batch_size": 1, "model_size": "small", "precision": "fp32"}
+
+def is_jetson():
+    try:
+        with open("/proc/device-tree/model", "r") as f:
+            return "jetson" in f.read().lower()
+    except:
+        return False
+```
+
+---
+
+## 3. 카메라 백엔드 호환성
+- Windows: `cv2.CAP_DSHOW` + MJPG
+- Linux/Jetson: `cv2.CAP_V4L2` + 버퍼 최소화
+
+```python
+def create_platform_camera(camera_id=0, config=None):
+    import platform
+    system = platform.system().lower()
+    if system == "windows":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
+    elif system == "linux":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
+        if is_jetson():
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    else:
+        cap = cv2.VideoCapture(camera_id)
+    return cap
+```
+
+---
+
+## 4. Python 버전 호환성
+- Python 3.10~3.13+에서 모두 동작해야 하며, 버전별 문법 차이(match-case 등)는 조건문으로 분기 처리한다.
+- 타입 힌트, TypeAlias 등은 버전별 import 분기 처리.
+
+```python
+import sys
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    TypeAlias = type
+```
+
+---
+
+## 5. 금지 사항
+- 하드코딩 경로, 백슬래시, Windows 전용 라이브러리, 환경 변수 무시, 버전 호환성 무시 금지.
+- 시뮬레이션 모드(`USE_SIMULATION=True`), 가짜 프레임/카메라 사용 금지.
+
+---
+
+## 6. 문서화
+- 위 규칙은 반드시 .mdc 파일에 명시적으로 포함되어야 하며, .md 문서만으로는 규칙으로 간주하지 않는다.
+
+---
+
+## 7. 도메인 기반 구조 및 기능별 파일 규칙 (필수)
+
+### 7.1 폴더/파일 구조
+- 모든 기능은 반드시 `domains/<도메인명>/<기능명>/` 폴더 아래 구성한다.
+- 각 기능 폴더에는 아래 파일이 반드시 존재해야 한다:
+  - `model.py`: ONNX 모델 로딩 및 추론 처리 클래스
+  - `run.py`: USB 카메라 또는 이미지 파일을 입력으로 받아 실시간 추론 실행
+  - `test_model.py`: 단위 테스트용 예제 이미지 추론 코드
+- 공통 설정은 반드시 `common/config.py`에 정의한다.
+
+### 7.2 추론 결과 처리
+- 추론 결과(클래스명, confidence, bounding box 등)는 **화면에 표시**하고 **로그로 저장**해야 한다.
+- 시각화는 OpenCV 등으로 BBox, 클래스명 라벨을 프레임에 그려야 한다.
+- 로그는 logging 모듈을 사용해 파일로 저장한다.
+
+### 7.3 코드 작성 기준
+- Python 3.10 기준으로 작성하되, 3.13 이상에서 실행될 수 있도록 호환성 고려
+- 모든 경로는 `os.path.join()` 또는 `pathlib.Path` 사용
+- **GUI용 코드와 Headless 실행 코드는 분리** (예: `run_gui.py` vs `run.py`)
+- 추론 결과는 **콘솔 출력 + 시각화(BBox, 클래스명 라벨)**
+- 외부에서 import해서 사용할 수 있도록 class/function 기반 모듈화
+
+### 7.4 모델 포맷
+- 학습은 PyTorch 기반으로 진행
+- 추론은 반드시 .onnx 포맷을 사용 (Jetson에서 onnxruntime 또는 TensorRT로 실행 가능해야 함)
+
+### 7.5 예시 구조/코드 템플릿
+```text
+# 예시: domains/factory/defect_detection/
+├── model.py        # ONNX 모델 클래스
+├── run.py          # 실시간 추론 실행 (카메라/이미지)
+├── test_model.py   # 단위 테스트
+```
+
+```python
+# model.py 예시
+class DefectDetectionModel:
+    def __init__(self, model_path, config):
+        # ONNX 모델 로딩 및 하드웨어 최적화
+        ...
+    def predict(self, image):
+        # 전처리 → 추론 → 후처리
+        ...
+
+# run.py 예시
+if __name__ == "__main__":
+    # 인자 파싱, 하드웨어 검증, 모델 로딩
+    # 카메라/이미지 입력 → 추론 → 결과 시각화/로그
+    ...
+
+# test_model.py 예시
+import unittest
+class TestDefectDetectionModel(unittest.TestCase):
+    def test_predict(self):
+        # 예제 이미지로 추론 테스트
+        ...
+```
+
+

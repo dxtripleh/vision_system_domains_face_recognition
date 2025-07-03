@@ -393,292 +393,69 @@ if __name__ == "__main__":
 - ⏳ Advanced 규칙은 다음 단계에서 적용
 - ⏳ Enterprise 규칙은 운영 단계에서 적용
 
-## 🌐 크로스 플랫폼 호환성 규칙 (Windows ↔ Ubuntu/Jetson)
+## 🌐 크로스 플랫폼/하드웨어/버전 호환성 규칙 (필수)
 
-### 경로 처리 (절대 필수)
+### 1. 경로 처리
+- 모든 경로는 반드시 `os.path.join()` 또는 `pathlib.Path`를 사용한다.
+- 하드코딩된 경로(`C:\`, `/home/`, `\` 등)는 절대 금지.
+- 프로젝트 루트 기준 경로는 `Path(__file__).parent.parent` 등으로 동적으로 계산한다.
+
+### 2. 하드웨어 환경 자동 감지 및 최적화
+- 코드 내에서 반드시 현재 환경(Windows/Ubuntu/Jetson/RTX5090/노트북)을 자동 감지하여 최적화 설정을 적용한다.
+- 예시 함수:
 ```python
-# ❌ 절대 금지: 플랫폼별 경로 사용
-path = "C:\\Users\\bj\\models\\model.onnx"  # Windows 전용
-path = "/home/user/models/model.onnx"       # Linux 전용
-path = "models\\weights\\model.onnx"        # 백슬래시 사용
-
-# ✅ 필수: 크로스 플랫폼 경로
-import os
-from pathlib import Path
-
-# 방법 1: os.path.join() 사용 (권장)
-model_path = os.path.join("models", "weights", "model.onnx")
-config_path = os.path.join("config", "face_recognition.yaml")
-
-# 방법 2: pathlib.Path 사용
-model_path = Path("models") / "weights" / "model.onnx"
-config_path = Path("config") / "face_recognition.yaml"
-
-# 절대 경로가 필요한 경우
-project_root = Path(__file__).parent.parent
-model_path = project_root / "models" / "weights" / "model.onnx"
-```
-
-### 환경 변수 및 설정 (플랫폼별 대응)
-```python
-# ✅ 플랫폼별 설정 처리
-import platform
-
-def get_platform_config():
-    """플랫폼별 설정 반환"""
+def get_optimal_config():
+    import platform, psutil
     system = platform.system().lower()
-    
-    if system == "windows":
-        return {
-            "device": "cuda" if torch.cuda.is_available() else "cpu",
-            "camera_backend": cv2.CAP_DSHOW,
-            "num_threads": os.cpu_count()
-        }
-    elif system == "linux":
-        # Jetson 감지
-        try:
-            with open("/proc/device-tree/model", "r") as f:
-                model = f.read()
-            if "jetson" in model.lower():
-                return {
-                    "device": "cuda",  # Jetson GPU
-                    "camera_backend": cv2.CAP_V4L2,
-                    "num_threads": 4,  # Jetson 최적화
-                    "use_tensorrt": True
-                }
-        except:
-            pass
-        
-        return {
-            "device": "cuda" if torch.cuda.is_available() else "cpu",
-            "camera_backend": cv2.CAP_V4L2,
-            "num_threads": os.cpu_count()
-        }
-    
-    return {}  # 기본 설정
-```
-
-### ONNX 런타임 호환성 (Jetson 특화)
-```python
-# ✅ 플랫폼별 ONNX 런타임 설정
-import onnxruntime as ort
-
-def create_onnx_session(model_path: str, device: str = "auto"):
-    """플랫폼별 최적화된 ONNX 세션 생성"""
-    
-    # 기본 옵션
-    session_options = ort.SessionOptions()
-    session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    
-    # 플랫폼별 프로바이더 설정
-    providers = []
-    
-    if device == "auto":
-        system = platform.system().lower()
-        
-        # Jetson 환경
-        if system == "linux" and is_jetson():
-            providers = [
-                ('TensorrtExecutionProvider', {
-                    'device_id': 0,
-                    'trt_max_workspace_size': 2 * 1024 * 1024 * 1024,  # 2GB
-                    'trt_fp16_enable': True,
-                }),
-                ('CUDAExecutionProvider', {'device_id': 0}),
-                'CPUExecutionProvider'
-            ]
-        # Windows/Ubuntu GPU
-        elif torch.cuda.is_available():
-            providers = [
-                ('CUDAExecutionProvider', {'device_id': 0}),
-                'CPUExecutionProvider'
-            ]
-        # CPU 전용
-        else:
-            providers = ['CPUExecutionProvider']
-            session_options.intra_op_num_threads = os.cpu_count()
-    
-    return ort.InferenceSession(
-        str(model_path), 
-        sess_options=session_options,
-        providers=providers
-    )
-
-def is_jetson():
-    """Jetson 플랫폼 감지"""
+    cpu_count = psutil.cpu_count()
+    memory_gb = psutil.virtual_memory().total // (1024**3)
     try:
-        with open("/proc/device-tree/model", "r") as f:
-            return "jetson" in f.read().lower()
+        import torch
+        gpu_available = torch.cuda.is_available()
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory // (1024**3) if gpu_available else 0
     except:
-        return False
-```
-
-### Python 버전 호환성 (3.10 → 3.13+)
-```python
-# ✅ Python 버전별 호환성 처리
-import sys
-from typing import Union, Optional, List, Dict
-
-# Python 3.10+ 호환 타입 힌트
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias
-else:
-    TypeAlias = type
-
-# Union 타입 (3.10+ | 문법 vs 이전 버전 Union)
-if sys.version_info >= (3, 10):
-    ImagePath: TypeAlias = Union[str, os.PathLike]
-else:
-    ImagePath = Union[str, os.PathLike]
-
-# ✅ 안전한 라이브러리 임포트
-try:
-    import cv2
-except ImportError:
-    print("OpenCV가 설치되지 않았습니다: pip install opencv-python")
-    sys.exit(1)
-
-try:
-    import numpy as np
-except ImportError:
-    print("NumPy가 설치되지 않았습니다: pip install numpy")
-    sys.exit(1)
-```
-
-### 카메라 백엔드 호환성
-```python
-# ✅ 플랫폼별 카메라 백엔드 설정
-def create_camera_capture(camera_id: Union[int, str] = 0):
-    """플랫폼별 최적화된 카메라 캡처 생성"""
-    
-    system = platform.system().lower()
-    
-    if system == "windows":
-        # Windows: DirectShow 백엔드
-        cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
-    elif system == "linux":
-        # Linux/Jetson: V4L2 백엔드
-        cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
-        
-        # Jetson 특화 설정
-        if is_jetson():
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # 지연 최소화
+        gpu_available = False
+        gpu_memory = 0
+    if gpu_available and gpu_memory >= 16:
+        return {"device": "cuda", "batch_size": 16, "model_size": "large", "precision": "fp16"}
+    elif gpu_available and gpu_memory >= 4:
+        return {"device": "cuda", "batch_size": 4, "model_size": "medium", "precision": "fp16"}
     else:
-        # macOS 등 기타 플랫폼
+        return {"device": "cpu", "batch_size": 1, "model_size": "small", "precision": "fp32"}
+```
+- Jetson 환경은 `/proc/device-tree/model`에서 "jetson" 문자열로 감지한다.
+- ONNX Runtime 세션 생성 시 플랫폼별 최적화 프로바이더(TensorRT, CUDA, CPU)를 자동 선택한다.
+
+### 3. 카메라 백엔드 호환성
+- Windows: `cv2.CAP_DSHOW` + MJPG
+- Linux/Jetson: `cv2.CAP_V4L2` + 버퍼 최소화
+- 코드 예시:
+```python
+def create_platform_camera(camera_id=0, config=None):
+    import platform
+    system = platform.system().lower()
+    if system == "windows":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
+    elif system == "linux":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
+        if is_jetson():
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    else:
         cap = cv2.VideoCapture(camera_id)
-    
-    if not cap.isOpened():
-        raise RuntimeError(f"카메라 {camera_id} 열기 실패")
-    
     return cap
 ```
 
-### 도메인 기반 모듈 구조 템플릿
-```python
-# ✅ 도메인 표준 구조 예시: domains/factory/defect_detection/
+### 4. Python 버전 호환성
+- Python 3.10~3.13+에서 모두 동작해야 하며, 버전별 문법 차이(match-case 등)는 조건문으로 분기 처리한다.
+- 타입 힌트, TypeAlias 등은 버전별 import 분기 처리.
 
-# domains/factory/defect_detection/model.py
-class DefectDetectionModel:
-    """YOLOv8 기반 불량 검출 모델 (크로스 플랫폼)"""
-    
-    def __init__(self, model_path: Optional[str] = None, device: str = "auto"):
-        # 플랫폼별 모델 경로 설정
-        if model_path is None:
-            model_path = self._get_default_model_path()
-        
-        self.model_path = Path(model_path)
-        self.session = create_onnx_session(str(self.model_path), device)
-        
-    def _get_default_model_path(self) -> Path:
-        """기본 모델 경로 (크로스 플랫폼)"""
-        project_root = Path(__file__).parent.parent.parent.parent
-        return project_root / "models" / "weights" / "defect_detection_yolov8n_factory_20250703.onnx"
+### 5. 금지 사항
+- 하드코딩 경로, 백슬래시, Windows 전용 라이브러리, 환경 변수 무시, 버전 호환성 무시 금지.
+- 시뮬레이션 모드(`USE_SIMULATION=True`), 가짜 프레임/카메라 사용 금지.
 
-# domains/factory/defect_detection/run.py
-def main():
-    """크로스 플랫폼 실행 진입점"""
-    
-    # 하드웨어 검증
-    verify_hardware_connection()
-    
-    # 플랫폼별 설정 로드
-    config = get_platform_config()
-    
-    # 모델 초기화
-    model = DefectDetectionModel(device=config["device"])
-    
-    # 카메라 초기화
-    cap = create_camera_capture(0)
-    
-    try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            # 추론 실행
-            results = model.predict(frame)
-            
-            # 결과 시각화 (크로스 플랫폼)
-            display_frame = visualize_results(frame, results)
-            
-            # 플랫폼별 디스플레이
-            if config.get("display_available", True):
-                cv2.imshow("Defect Detection", display_frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
-            
-    finally:
-        cap.release()
-        cv2.destroyAllWindows()
-```
-
-### 금지 사항 (크로스 플랫폼)
-```python
-# ❌ 절대 금지: 플랫폼별 하드코딩
-if os.name == "nt":  # Windows 확인하지 말 것
-    model_path = "C:\\models\\model.onnx"
-
-# ❌ 절대 금지: 백슬래시 경로
-path = "models\\weights\\model.onnx"
-
-# ❌ 절대 금지: 절대 경로 하드코딩
-model_path = "/home/user/vision_system/models/model.onnx"
-
-# ❌ 절대 금지: Windows 전용 라이브러리
-import winsound  # Windows 전용
-
-# ❌ 절대 금지: 플랫폼별 조건문 남발
-if platform.system() == "Windows":
-    # 너무 많은 플랫폼별 분기는 금지
-```
-
-### 필수 테스트 절차
-```python
-# ✅ 크로스 플랫폼 테스트 체크리스트
-def test_cross_platform_compatibility():
-    """크로스 플랫폼 호환성 테스트"""
-    
-    # 1. 경로 처리 테스트
-    assert os.path.exists(os.path.join("models", "weights"))
-    
-    # 2. 모델 로딩 테스트
-    model = DefectDetectionModel()
-    assert model.session is not None
-    
-    # 3. 카메라 접근 테스트 (조건부)
-    try:
-        cap = create_camera_capture(0)
-        cap.release()
-    except RuntimeError:
-        print("카메라 없음 - 파일 입력 모드로 테스트")
-    
-    # 4. 결과 저장 경로 테스트
-    output_dir = os.path.join("data", "output")
-    os.makedirs(output_dir, exist_ok=True)
-    assert os.path.exists(output_dir)
-```
+### 6. 문서화
+- 위 규칙은 반드시 .cursorrules 또는 .mdc 파일에 명시적으로 포함되어야 하며, .md 문서만으로는 규칙으로 간주하지 않는다.
 
 ## 🏗️ 프로젝트 구조 규칙
 
