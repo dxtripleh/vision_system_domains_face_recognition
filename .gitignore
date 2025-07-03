@@ -88,6 +88,13 @@ desktop.ini
 # Vision System Specific
 # ==============================================================================
 
+# 백업 폴더 (대용량 파일 포함)
+temp_backup/
+backup/
+archive/
+old_*/
+legacy/
+
 # 런타임 생성 데이터 (data/ 폴더 내에서만 허용)
 data/temp/*
 data/logs/*
@@ -96,7 +103,7 @@ data/output/*
 !data/logs/.gitkeep
 !data/output/.gitkeep
 
-# 대용량 모델 파일들 (models/weights/ 에서 선택적 추적)
+# 대용량 모델 파일들 (모든 확장자 포함)
 models/weights/*.onnx
 models/weights/*.pt
 models/weights/*.pth
@@ -104,8 +111,32 @@ models/weights/*.h5
 models/weights/*.pb
 models/weights/*.tflite
 models/weights/*.bin
+models/weights/*.safetensors
+models/weights/*.ckpt
+models/weights/*.pkl
+models/weights/*.joblib
 # 단, 메타데이터는 추적
 !models/metadata/
+!models/configs/
+
+# 대용량 파일 (100MB 이상)
+*.onnx
+*.pt
+*.pth
+*.h5
+*.pb
+*.tflite
+*.bin
+*.safetensors
+*.ckpt
+*.pkl
+*.joblib
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.iso
+*.dmg
 
 # 개발 중 생성되는 임시 결과물
 *.log
@@ -129,6 +160,7 @@ notebooks/.ipynb_checkpoints/
 # 대용량 데이터셋 (선택적으로 LFS 사용)
 datasets/*/raw/*
 datasets/*/processed/*
+datasets/*/augmented/*
 !datasets/**/README.md
 !datasets/**/metadata/
 
