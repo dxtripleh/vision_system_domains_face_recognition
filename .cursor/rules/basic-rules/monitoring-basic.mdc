@@ -1,0 +1,373 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 기본 모니터링 규칙 (Basic)
+
+## ⚠️ 현실적 한계 및 적용 안내
+- **성능 모니터링**: 기본 구현은 제공되지만, 실제 운영에서는 별도 모니터링 서버 설정 필요
+- **알림 시스템**: 로그 기반 알림만 제공, 이메일/Slack 등 외부 알림은 별도 구현 필요
+- **메트릭 저장**: JSON 파일로 저장되며, 시계열 DB 연동은 별도 구현 필요
+- **자동 정리**: 메트릭 파일 자동 정리는 별도 스케줄러 설정 필요
+
+## 📊 기본 성능 모니터링
+
+### 성능 측정 클래스
+```python
+import time
+import psutil
+import logging
+from collections import deque
+from typing import Dict, List, Optional
+import json
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+class BasicPerformanceMonitor:
+    """기본 성능 모니터링"""
+    
+    def __init__(self, history_size: int = 100):
+        self.history_size = history_size
+        self.fps_history = deque(maxlen=history_size)
+        self.processing_times = deque(maxlen=history_size)
+        self.memory_usage = deque(maxlen=history_size)
+        self.cpu_usage = deque(maxlen=history_size)
+        
+        self.frame_count = 0
+        self.start_time = time.time()
+        self.is_monitoring = False
+        
+        # 로그 디렉토리 생성
+        self.log_dir = Path("data/logs")
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+    
+    def start_monitoring(self):
+        """모니터링 시작"""
+        if self.is_monitoring:
+            return
+        
+        self.is_monitoring = True
+        self.frame_count = 0
+        self.start_time = time.time()
+        logger.info("Performance monitoring started")
+    
+    def stop_monitoring(self):
+        """모니터링 중지"""
+        self.is_monitoring = False
+        self._save_final_report()
+        logger.info("Performance monitoring stopped")
+    
+    def record_frame_processing(self, processing_time_ms: float):
+        """프레임 처리 시간 기록"""
+        if not self.is_monitoring:
+            return
+        
+        self.frame_count += 1
+        self.processing_times.append(processing_time_ms)
+        
+        # FPS 계산
+        elapsed_time = time.time() - self.start_time
+        if elapsed_time > 0:
+            current_fps = self.frame_count / elapsed_time
+            self.fps_history.append(current_fps)
+        
+        # 시스템 리소스 기록
+        self._record_system_metrics()
+    
+    def _record_system_metrics(self):
+        """시스템 메트릭 기록"""
+        try:
+            # CPU 사용률
+            cpu_percent = psutil.cpu_percent()
+            self.cpu_usage.append(cpu_percent)
+            
+            # 메모리 사용률
+            memory = psutil.virtual_memory()
+            memory_mb = memory.used / (1024 * 1024)  # MB
+            self.memory_usage.append(memory_mb)
+            
+        except Exception as e:
+            logger.warning(f"Failed to record system metrics: {e}")
+    
+    def get_current_stats(self) -> Dict:
+        """현재 통계 반환"""
+        if not self.fps_history:
+            return {}
+        
+        return {
+            'current_fps': self.fps_history[-1] if self.fps_history else 0,
+            'avg_fps': sum(self.fps_history) / len(self.fps_history),
+            'avg_processing_time_ms': sum(self.processing_times) / len(self.processing_times) if self.processing_times else 0,
+            'total_frames': self.frame_count,
+            'current_cpu_percent': self.cpu_usage[-1] if self.cpu_usage else 0,
+            'current_memory_mb': self.memory_usage[-1] if self.memory_usage else 0
+        }
+    
+    def _save_final_report(self):
+        """최종 리포트 저장"""
+        stats = self.get_current_stats()
+        
+        report = {
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'summary': stats,
+            'history': {
+                'fps': list(self.fps_history),
+                'processing_times': list(self.processing_times),
+                'cpu_usage': list(self.cpu_usage),
+                'memory_usage': list(self.memory_usage)
+            }
+        }
+        
+        report_file = self.log_dir / f"performance_report_{int(time.time())}.json"
+        with open(report_file, 'w', encoding='utf-8') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Performance report saved: {report_file}")
+```
+
+### 얼굴 검출 모니터링
+```python
+class FaceDetectionMonitor:
+    """얼굴 검출 모니터링"""
+    
+    def __init__(self):
+        self.detection_history = deque(maxlen=1000)
+        self.error_count = 0
+        self.success_count = 0
+        
+    def record_detection(self, 
+                        face_count: int, 
+                        processing_time_ms: float,
+                        confidence_scores: List[float],
+                        success: bool = True):
+        """검출 결과 기록"""
+        detection_record = {
+            'timestamp': time.time(),
+            'face_count': face_count,
+            'processing_time_ms': processing_time_ms,
+            'avg_confidence': sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0,
+            'max_confidence': max(confidence_scores) if confidence_scores else 0,
+            'success': success
+        }
+        
+        self.detection_history.append(detection_record)
+        
+        if success:
+            self.success_count += 1
+        else:
+            self.error_count += 1
+    
+    def get_detection_stats(self) -> Dict:
+        """검출 통계 반환"""
+        if not self.detection_history:
+            return {}
+        
+        recent_detections = list(self.detection_history)[-100:]  # 최근 100개
+        
+        return {
+            'total_detections': len(self.detection_history),
+            'success_rate': self.success_count / (self.success_count + self.error_count) if (self.success_count + self.error_count) > 0 else 0,
+            'avg_face_count': sum(d['face_count'] for d in recent_detections) / len(recent_detections),
+            'avg_processing_time': sum(d['processing_time_ms'] for d in recent_detections) / len(recent_detections),
+            'avg_confidence': sum(d['avg_confidence'] for d in recent_detections) / len(recent_detections)
+        }
+```
+
+## 🚨 기본 알림 시스템
+
+### 간단한 알림 관리자
+```python
+class BasicAlertManager:
+    """기본 알림 관리자"""
+    
+    def __init__(self):
+        self.alert_thresholds = {
+            'fps_min': 15.0,
+            'processing_time_max_ms': 100.0,
+            'memory_max_mb': 1000.0,
+            'error_rate_max': 0.1
+        }
+        self.alert_history = []
+    
+    def check_performance_alerts(self, stats: Dict) -> List[str]:
+        """성능 알림 확인"""
+        alerts = []
+        
+        # FPS 체크
+        if stats.get('current_fps', 0) < self.alert_thresholds['fps_min']:
+            alerts.append(f"Low FPS: {stats.get('current_fps', 0):.1f}")
+        
+        # 처리 시간 체크
+        if stats.get('avg_processing_time_ms', 0) > self.alert_thresholds['processing_time_max_ms']:
+            alerts.append(f"High processing time: {stats.get('avg_processing_time_ms', 0):.1f}ms")
+        
+        # 메모리 체크
+        if stats.get('current_memory_mb', 0) > self.alert_thresholds['memory_max_mb']:
+            alerts.append(f"High memory usage: {stats.get('current_memory_mb', 0):.1f}MB")
+        
+        return alerts
+    
+    def log_alerts(self, alerts: List[str]):
+        """알림 로깅"""
+        for alert in alerts:
+            logger.warning(f"PERFORMANCE ALERT: {alert}")
+            self.alert_history.append({
+                'timestamp': time.time(),
+                'message': alert
+            })
+```
+
+## 📈 기본 메트릭 수집
+
+### 메트릭 수집기
+```python
+class BasicMetricsCollector:
+    """기본 메트릭 수집기"""
+    
+    def __init__(self):
+        self.metrics_dir = Path("data/logs/metrics")
+        self.metrics_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.performance_monitor = BasicPerformanceMonitor()
+        self.detection_monitor = FaceDetectionMonitor()
+        self.alert_manager = BasicAlertManager()
+    
+    def start_collection(self):
+        """메트릭 수집 시작"""
+        self.performance_monitor.start_monitoring()
+        logger.info("Metrics collection started")
+    
+    def stop_collection(self):
+        """메트릭 수집 중지"""
+        self.performance_monitor.stop_monitoring()
+        self._save_metrics()
+        logger.info("Metrics collection stopped")
+    
+    def record_vision_metrics(self, 
+                            face_count: int,
+                            processing_time_ms: float,
+                            confidence_scores: List[float],
+                            success: bool = True):
+        """비전 메트릭 기록"""
+        self.performance_monitor.record_frame_processing(processing_time_ms)
+        self.detection_monitor.record_detection(
+            face_count, processing_time_ms, confidence_scores, success
+        )
+        
+        # 알림 확인
+        stats = self.performance_monitor.get_current_stats()
+        alerts = self.alert_manager.check_performance_alerts(stats)
+        self.alert_manager.log_alerts(alerts)
+    
+    def _save_metrics(self):
+        """메트릭 저장"""
+        timestamp = int(time.time())
+        
+        # 성능 메트릭
+        performance_stats = self.performance_monitor.get_current_stats()
+        performance_file = self.metrics_dir / f"performance_{timestamp}.json"
+        with open(performance_file, 'w', encoding='utf-8') as f:
+            json.dump(performance_stats, f, indent=2, ensure_ascii=False)
+        
+        # 검출 메트릭
+        detection_stats = self.detection_monitor.get_detection_stats()
+        detection_file = self.metrics_dir / f"detection_{timestamp}.json"
+        with open(detection_file, 'w', encoding='utf-8') as f:
+            json.dump(detection_stats, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Metrics saved: {performance_file}, {detection_file}")
+```
+
+## 🔧 실제 적용 예시
+
+### 데모에서 모니터링 사용
+```python
+def setup_basic_monitoring():
+    """기본 모니터링 설정"""
+    metrics_collector = BasicMetricsCollector()
+    metrics_collector.start_collection()
+    return metrics_collector
+
+def run_demo_with_monitoring():
+    """모니터링과 함께 데모 실행"""
+    metrics_collector = setup_basic_monitoring()
+    
+    try:
+        # 메인 처리 루프
+        while True:
+            start_time = time.time()
+            
+            # 얼굴 검출
+            detection_result = detection_service.detect_faces(frame)
+            processing_time = (time.time() - start_time) * 1000
+            
+            # 메트릭 기록
+            confidence_scores = [face.confidence.value for face in detection_result.faces]
+            metrics_collector.record_vision_metrics(
+                face_count=len(detection_result.faces),
+                processing_time_ms=processing_time,
+                confidence_scores=confidence_scores,
+                success=True
+            )
+            
+    finally:
+        metrics_collector.stop_collection()
+```
+
+### 실제 데모 코드에 적용
+```python
+# domains/face_recognition/runners/recognition/run_demo.py에 추가
+from shared.monitoring import BasicMetricsCollector
+
+class RealtimeDemo:
+    def __init__(self, camera_id: int = 0):
+        # ... 기존 초기화 코드 ...
+        
+        # 모니터링 추가
+        self.metrics_collector = BasicMetricsCollector()
+    
+    def run(self):
+        # 모니터링 시작
+        self.metrics_collector.start_collection()
+        
+        try:
+            while True:
+                # ... 기존 프레임 처리 코드 ...
+                
+                # 메트릭 기록
+                confidence_scores = [face.confidence.value for face in faces]
+                self.metrics_collector.record_vision_metrics(
+                    face_count=len(faces),
+                    processing_time_ms=processing_time,
+                    confidence_scores=confidence_scores,
+                    success=True
+                )
+                
+        finally:
+            # 모니터링 중지
+            self.metrics_collector.stop_collection()
+```
+
+## 📋 모니터링 체크리스트
+
+### 필수 구현 항목
+- [ ] 성능 모니터링 (FPS, 처리시간, CPU, 메모리)
+- [ ] 검출 모니터링 (얼굴 수, 신뢰도, 성공률)
+- [ ] 기본 알림 시스템 (임계값 기반)
+- [ ] 메트릭 저장 (JSON 파일)
+
+### 권장 구현 항목
+- [ ] 실시간 대시보드 (간단한 웹 인터페이스)
+- [ ] 메트릭 시각화 (matplotlib/plotly)
+- [ ] 알림 이메일/Slack 연동
+- [ ] 메트릭 자동 정리
+
+### 선택적 구현 항목
+- [ ] Prometheus/Grafana 연동
+- [ ] 시계열 데이터베이스 연동
+- [ ] 고급 알림 (이상 감지, 예측)
+
+- [ ] 비즈니스 메트릭 추적

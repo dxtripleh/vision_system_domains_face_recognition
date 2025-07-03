@@ -1,0 +1,1212 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 문서화 시스템 규칙 (Documentation System Rules)
+
+이 규칙은 자동 문서화, API 문서 생성, 코드 문서화, 사용자 가이드 작성에 관한 범용 표준입니다.
+
+## 📚 자동 API 문서 생성
+
+### FastAPI + Swagger 통합
+```python
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+import uvicorn
+
+app = FastAPI(
+    title="Vision System API",
+    description="""
+    ## Vision System API Documentation
+    
+    이 API는 비전 시스템의 핵심 기능을 제공합니다:
+    
+    * **카메라 관리** - 카메라 연결, 설정, 모니터링
+    * **이미지 처리** - 실시간 이미지 분석 및 처리
+    * **모델 관리** - AI 모델 로딩, 추론, 성능 모니터링
+    * **결과 조회** - 분석 결과 조회 및 통계
+    
+    ### 인증
+    모든 API 엔드포인트는 JWT 토큰 인증이 필요합니다.
+    
+    ### 요청 제한
+    - 일반 사용자: 시간당 100회
+    - 관리자: 시간당 1000회
+    """,
+    version="1.0.0",
+    contact={
+        "name": "Vision System Team",
+        "email": "vision-team@company.com",
+        "url": "https://github.com/company/vision-system"
+    },
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT"
+    },
+    openapi_tags=[
+        {
+            "name": "cameras",
+            "description": "카메라 관리 관련 API",
+        },
+        {
+            "name": "models",
+            "description": "AI 모델 관리 관련 API",
+        },
+        {
+            "name": "processing",
+            "description": "이미지 처리 관련 API",
+        },
+        {
+            "name": "monitoring",
+            "description": "시스템 모니터링 관련 API",
+        }
+    ]
+)
+
+# Pydantic 모델 정의 (자동 스키마 생성)
+class CameraConfig(BaseModel):
+    """카메라 설정 모델"""
+    
+    camera_id: str = Field(
+        ..., 
+        description="카메라 고유 식별자",
+        example="camera_001"
+    )
+    rtsp_url: str = Field(
+        ..., 
+        description="RTSP 스트림 URL",
+        example="rtsp://192.168.1.100:554/stream1"
+    )
+    resolution: str = Field(
+        default="1920x1080",
+        description="해상도 설정",
+        example="1920x1080"
+    )
+    fps: int = Field(
+        default=30,
+        ge=1,
+        le=60,
+        description="초당 프레임 수 (1-60)",
+        example=30
+    )
+    enabled: bool = Field(
+        default=True,
+        description="카메라 활성화 여부"
+    )
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "camera_id": "camera_001",
+                "rtsp_url": "rtsp://192.168.1.100:554/stream1",
+                "resolution": "1920x1080",
+                "fps": 30,
+                "enabled": True
+            }
+        }
+
+class DetectionResult(BaseModel):
+    """검출 결과 모델"""
+    
+    detection_id: str = Field(..., description="검출 결과 고유 ID")
+    camera_id: str = Field(..., description="카메라 ID")
+    timestamp: float = Field(..., description="검출 시간 (Unix timestamp)")
+    class_name: str = Field(..., description="검출된 객체 클래스")
+    confidence: float = Field(
+        ..., 
+        ge=0.0, 
+        le=1.0, 
+        description="신뢰도 (0.0-1.0)"
+    )
+    bbox: List[float] = Field(
+        ..., 
+        description="바운딩 박스 [x, y, width, height]",
+        min_items=4,
+        max_items=4
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="추가 메타데이터"
+    )
+
+class APIResponse(BaseModel):
+    """표준 API 응답 모델"""
+    
+    success: bool = Field(..., description="요청 성공 여부")
+    message: str = Field(..., description="응답 메시지")
+    data: Optional[Any] = Field(default=None, description="응답 데이터")
+    error_code: Optional[str] = Field(default=None, description="에러 코드")
+
+# API 엔드포인트 정의
+@app.post(
+    "/cameras/",
+    response_model=APIResponse,
+    tags=["cameras"],
+    summary="카메라 추가",
+    description="새로운 카메라를 시스템에 추가합니다.",
+    responses={
+        201: {
+            "description": "카메라가 성공적으로 추가됨",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "message": "Camera added successfully",
+                        "data": {"camera_id": "camera_001"}
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "잘못된 요청",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "message": "Invalid camera configuration",
+                        "error_code": "INVALID_CONFIG"
+                    }
+                }
+            }
+        }
+    }
+)
+async def add_camera(camera_config: CameraConfig):
+    """
+    카메라를 시스템에 추가합니다.
+    
+    - **camera_id**: 카메라의 고유 식별자
+    - **rtsp_url**: 카메라의 RTSP 스트림 URL
+    - **resolution**: 해상도 설정 (예: 1920x1080)
+    - **fps**: 초당 프레임 수 (1-60 범위)
+    - **enabled**: 카메라 활성화 여부
+    
+    Returns:
+        APIResponse: 카메라 추가 결과
+    """
+    try:
+        # 카메라 추가 로직
+        result = camera_manager.add_camera(camera_config)
+        return APIResponse(
+            success=True,
+            message="Camera added successfully",
+            data={"camera_id": camera_config.camera_id}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "message": str(e),
+                "error_code": "CAMERA_ADD_FAILED"
+            }
+        )
+
+@app.get(
+    "/cameras/{camera_id}/detections",
+    response_model=List[DetectionResult],
+    tags=["processing"],
+    summary="검출 결과 조회",
+    description="특정 카메라의 검출 결과를 조회합니다."
+)
+async def get_detections(
+    camera_id: str = Field(..., description="카메라 ID"),
+    limit: int = Field(default=100, ge=1, le=1000, description="결과 개수 제한"),
+    start_time: Optional[float] = Field(default=None, description="시작 시간 (Unix timestamp)"),
+    end_time: Optional[float] = Field(default=None, description="종료 시간 (Unix timestamp)")
+):
+    """
+    특정 카메라의 검출 결과를 조회합니다.
+    
+    Args:
+        camera_id: 카메라 고유 식별자
+        limit: 반환할 결과의 최대 개수 (1-1000)
+        start_time: 조회 시작 시간 (Unix timestamp)
+        end_time: 조회 종료 시간 (Unix timestamp)
+    
+    Returns:
+        List[DetectionResult]: 검출 결과 목록
+    """
+    try:
+        results = detection_service.get_detections(
+            camera_id=camera_id,
+            limit=limit,
+            start_time=start_time,
+            end_time=end_time
+        )
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+# 커스텀 OpenAPI 스키마
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # 커스텀 스키마 확장
+    openapi_schema["info"]["x-logo"] = {
+        "url": "https://company.com/logo.png"
+    }
+    
+    # 보안 스키마 추가
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT"
+        }
+    }
+    
+    # 전역 보안 적용
+    openapi_schema["security"] = [{"BearerAuth": []}]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+```
+
+## 📖 Sphinx 문서화 시스템
+
+### Sphinx 설정
+```python
+# docs/conf.py
+import os
+import sys
+sys.path.insert(0, os.path.abspath('..'))
+
+# 프로젝트 정보
+project = 'Vision System'
+copyright = '2025, Vision Team'
+author = 'Vision Team'
+version = '1.0.0'
+release = '1.0.0'
+
+# 확장 기능
+extensions = [
+    'sphinx.ext.autodoc',          # 자동 문서 생성
+    'sphinx.ext.viewcode',         # 소스 코드 링크
+    'sphinx.ext.napoleon',         # Google/NumPy 스타일 docstring
+    'sphinx.ext.intersphinx',      # 외부 문서 링크
+    'sphinx.ext.todo',             # TODO 항목
+    'sphinx.ext.coverage',         # 문서화 커버리지
+    'sphinx.ext.githubpages',      # GitHub Pages 지원
+    'sphinx_rtd_theme',            # Read the Docs 테마
+    'sphinxcontrib.mermaid',       # Mermaid 다이어그램
+    'sphinx_copybutton',           # 코드 복사 버튼
+]
+
+# 템플릿 경로
+templates_path = ['_templates']
+
+# 제외할 패턴
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+
+# HTML 출력 설정
+html_theme = 'sphinx_rtd_theme'
+html_static_path = ['_static']
+html_css_files = ['custom.css']
+
+# 테마 옵션
+html_theme_options = {
+    'canonical_url': '',
+    'analytics_id': 'UA-XXXXXXX-1',
+    'logo_only': False,
+    'display_version': True,
+    'prev_next_buttons_location': 'bottom',
+    'style_external_links': False,
+    'vcs_pageview_mode': '',
+    'style_nav_header_background': '#2980B9',
+    'collapse_navigation': True,
+    'sticky_navigation': True,
+    'navigation_depth': 4,
+    'includehidden': True,
+    'titles_only': False
+}
+
+# autodoc 설정
+autodoc_default_options = {
+    'members': True,
+    'member-order': 'bysource',
+    'special-members': '__init__',
+    'undoc-members': True,
+    'exclude-members': '__weakref__'
+}
+
+# Napoleon 설정 (Google 스타일 docstring)
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = False
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = True
+napoleon_use_admonition_for_examples = False
+napoleon_use_admonition_for_notes = False
+napoleon_use_admonition_for_references = False
+napoleon_use_ivar = False
+napoleon_use_param = True
+napoleon_use_rtype = True
+
+# Intersphinx 매핑
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3/', None),
+    'numpy': ('https://numpy.org/doc/stable/', None),
+    'opencv': ('https://docs.opencv.org/4.x/', None),
+    'fastapi': ('https://fastapi.tiangolo.com/', None),
+}
+
+# TODO 확장 설정
+todo_include_todos = True
+
+# 커버리지 설정
+coverage_show_missing_items = True
+```
+
+### 자동 문서 생성 스크립트
+```python
+# scripts/generate_docs.py
+import os
+import subprocess
+import shutil
+from pathlib import Path
+import ast
+import inspect
+from typing import List, Dict, Any
+
+class DocumentationGenerator:
+    """자동 문서 생성기"""
+    
+    def __init__(self, source_dir: str = "src", docs_dir: str = "docs"):
+        self.source_dir = Path(source_dir)
+        self.docs_dir = Path(docs_dir)
+        self.api_docs_dir = self.docs_dir / "api"
+        
+    def generate_all_docs(self):
+        """모든 문서 생성"""
+        print("🚀 Starting documentation generation...")
+        
+        # 1. API 문서 생성
+        self.generate_api_docs()
+        
+        # 2. 사용자 가이드 생성
+        self.generate_user_guides()
+        
+        # 3. 개발자 가이드 생성
+        self.generate_developer_guides()
+        
+        # 4. Sphinx 빌드
+        self.build_sphinx_docs()
+        
+        print("✅ Documentation generation completed!")
+    
+    def generate_api_docs(self):
+        """API 문서 자동 생성"""
+        print("📚 Generating API documentation...")
+        
+        # API 문서 디렉토리 생성
+        self.api_docs_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 모든 Python 모듈 스캔
+        for py_file in self.source_dir.rglob("*.py"):
+            if py_file.name == "__init__.py":
+                continue
+                
+            module_path = str(py_file.relative_to(self.source_dir)).replace("/", ".").replace("\\", ".")[:-3]
+            self._generate_module_doc(module_path, py_file)
+    
+    def _generate_module_doc(self, module_path: str, file_path: Path):
+        """개별 모듈 문서 생성"""
+        try:
+            # AST를 사용한 모듈 분석
+            with open(file_path, 'r', encoding='utf-8') as f:
+                source = f.read()
+            
+            tree = ast.parse(source)
+            module_info = self._analyze_module(tree)
+            
+            # RST 파일 생성
+            rst_content = self._generate_rst_content(module_path, module_info)
+            
+            rst_file = self.api_docs_dir / f"{module_path.replace('.', '_')}.rst"
+            with open(rst_file, 'w', encoding='utf-8') as f:
+                f.write(rst_content)
+                
+        except Exception as e:
+            print(f"⚠️  Error processing {module_path}: {str(e)}")
+    
+    def _analyze_module(self, tree: ast.AST) -> Dict[str, Any]:
+        """모듈 AST 분석"""
+        module_info = {
+            'docstring': ast.get_docstring(tree),
+            'classes': [],
+            'functions': [],
+            'constants': []
+        }
+        
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                class_info = {
+                    'name': node.name,
+                    'docstring': ast.get_docstring(node),
+                    'methods': []
+                }
+                
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef):
+                        method_info = {
+                            'name': item.name,
+                            'docstring': ast.get_docstring(item),
+                            'args': [arg.arg for arg in item.args.args]
+                        }
+                        class_info['methods'].append(method_info)
+                
+                module_info['classes'].append(class_info)
+            
+            elif isinstance(node, ast.FunctionDef) and not any(
+                isinstance(parent, ast.ClassDef) 
+                for parent in ast.walk(tree) 
+                if node in getattr(parent, 'body', [])
+            ):
+                func_info = {
+                    'name': node.name,
+                    'docstring': ast.get_docstring(node),
+                    'args': [arg.arg for arg in node.args.args]
+                }
+                module_info['functions'].append(func_info)
+        
+        return module_info
+    
+    def _generate_rst_content(self, module_path: str, module_info: Dict) -> str:
+        """RST 내용 생성"""
+        lines = []
+        
+        # 제목
+        title = f"{module_path} Module"
+        lines.append(title)
+        lines.append("=" * len(title))
+        lines.append("")
+        
+        # 모듈 docstring
+        if module_info['docstring']:
+            lines.append(module_info['docstring'])
+            lines.append("")
+        
+        # automodule 지시문
+        lines.append(f".. automodule:: {module_path}")
+        lines.append("   :members:")
+        lines.append("   :undoc-members:")
+        lines.append("   :show-inheritance:")
+        lines.append("")
+        
+        # 클래스 상세 정보
+        if module_info['classes']:
+            lines.append("Classes")
+            lines.append("-------")
+            lines.append("")
+            
+            for class_info in module_info['classes']:
+                lines.append(f".. autoclass:: {module_path}.{class_info['name']}")
+                lines.append("   :members:")
+                lines.append("   :undoc-members:")
+                lines.append("   :show-inheritance:")
+                lines.append("")
+        
+        # 함수 상세 정보
+        if module_info['functions']:
+            lines.append("Functions")
+            lines.append("---------")
+            lines.append("")
+            
+            for func_info in module_info['functions']:
+                lines.append(f".. autofunction:: {module_path}.{func_info['name']}")
+                lines.append("")
+        
+        return "\n".join(lines)
+    
+    def generate_user_guides(self):
+        """사용자 가이드 생성"""
+        print("📖 Generating user guides...")
+        
+        guides = {
+            "installation": self._generate_installation_guide(),
+            "quickstart": self._generate_quickstart_guide(),
+            "configuration": self._generate_configuration_guide(),
+            "troubleshooting": self._generate_troubleshooting_guide()
+        }
+        
+        for guide_name, content in guides.items():
+            guide_file = self.docs_dir / f"{guide_name}.rst"
+            with open(guide_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+    
+    def _generate_installation_guide(self) -> str:
+        """설치 가이드 생성"""
+        return """
+Installation Guide
+==================
+
+System Requirements
+-------------------
+
+* Python 3.8 or higher
+* CUDA 11.8+ (for GPU support)
+* OpenCV 4.5+
+* 8GB+ RAM (16GB+ recommended)
+
+Installation Steps
+------------------
+
+1. Clone the repository:
+
+.. code-block:: bash
+
+   git clone https://github.com/company/vision-system.git
+   cd vision-system
+
+2. Create virtual environment:
+
+.. code-block:: bash
+
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\\Scripts\\activate
+
+3. Install dependencies:
+
+.. code-block:: bash
+
+   pip install -r requirements.txt
+
+4. Download models:
+
+.. code-block:: bash
+
+   python scripts/download_models.py
+
+5. Configure settings:
+
+.. code-block:: bash
+
+   cp config/config.yaml.example config/config.yaml
+   # Edit config.yaml with your settings
+
+Verification
+------------
+
+Run the test suite to verify installation:
+
+.. code-block:: bash
+
+   pytest tests/
+
+Start the API server:
+
+.. code-block:: bash
+
+   python -m src.main
+
+Visit http://localhost:8000/docs to see the API documentation.
+"""
+    
+    def _generate_quickstart_guide(self) -> str:
+        """퀵스타트 가이드 생성"""
+        return """
+Quickstart Guide
+================
+
+This guide will help you get started with the Vision System in 5 minutes.
+
+Basic Usage
+-----------
+
+1. Start the API server:
+
+.. code-block:: bash
+
+   python -m src.main
+
+2. Add a camera:
+
+.. code-block:: python
+
+   import requests
+   
+   camera_config = {
+       "camera_id": "cam001",
+       "rtsp_url": "rtsp://192.168.1.100:554/stream1",
+       "resolution": "1920x1080",
+       "fps": 30,
+       "enabled": True
+   }
+   
+   response = requests.post(
+       "http://localhost:8000/cameras/",
+       json=camera_config
+   )
+
+3. Start processing:
+
+.. code-block:: python
+
+   response = requests.post(
+       f"http://localhost:8000/cameras/{camera_id}/start"
+   )
+
+4. Get detection results:
+
+.. code-block:: python
+
+   response = requests.get(
+       f"http://localhost:8000/cameras/{camera_id}/detections"
+   )
+   detections = response.json()
+
+Example Application
+-------------------
+
+Here's a complete example:
+
+.. code-block:: python
+
+   from src.camera_manager import CameraManager
+   from src.vision_processor import VisionProcessor
+   
+   # Initialize components
+   camera_manager = CameraManager()
+   processor = VisionProcessor()
+   
+   # Add camera
+   camera_manager.add_camera("cam001", "rtsp://...")
+   
+   # Start processing
+   processor.start_processing("cam001")
+   
+   # Get results
+   results = processor.get_latest_results("cam001")
+   print(f"Detected {len(results)} objects")
+
+Next Steps
+----------
+
+* Read the :doc:`configuration` guide for advanced settings
+* Check out the :doc:`api/index` for complete API reference
+* See :doc:`examples/index` for more examples
+"""
+    
+    def generate_developer_guides(self):
+        """개발자 가이드 생성"""
+        print("🔧 Generating developer guides...")
+        
+        # 개발 환경 설정 가이드
+        dev_guide = """
+Developer Guide
+===============
+
+Development Environment Setup
+-----------------------------
+
+1. Install development dependencies:
+
+.. code-block:: bash
+
+   pip install -r requirements-dev.txt
+
+2. Set up pre-commit hooks:
+
+.. code-block:: bash
+
+   pre-commit install
+
+3. Run tests:
+
+.. code-block:: bash
+
+   pytest tests/ --cov=src
+
+Code Style
+----------
+
+We use the following tools for code quality:
+
+* **Black** for code formatting
+* **isort** for import sorting
+* **flake8** for linting
+* **mypy** for type checking
+
+Run all checks:
+
+.. code-block:: bash
+
+   make lint
+
+Architecture Overview
+--------------------
+
+.. mermaid::
+
+   graph TD
+       A[API Server] --> B[Camera Manager]
+       A --> C[Vision Processor]
+       A --> D[Model Manager]
+       B --> E[Camera Streams]
+       C --> F[AI Models]
+       D --> G[Model Storage]
+
+Contributing
+------------
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+Testing Guidelines
+------------------
+
+* Write unit tests for all new functions
+* Include integration tests for API endpoints
+* Maintain >90% code coverage
+* Use pytest fixtures for common test data
+"""
+        
+        dev_file = self.docs_dir / "development.rst"
+        with open(dev_file, 'w', encoding='utf-8') as f:
+            f.write(dev_guide)
+    
+    def build_sphinx_docs(self):
+        """Sphinx 문서 빌드"""
+        print("🏗️  Building Sphinx documentation...")
+        
+        try:
+            # Sphinx 빌드 실행
+            subprocess.run([
+                "sphinx-build", 
+                "-b", "html", 
+                str(self.docs_dir), 
+                str(self.docs_dir / "_build" / "html")
+            ], check=True)
+            
+            print("✅ Sphinx documentation built successfully!")
+            print(f"📄 Documentation available at: {self.docs_dir / '_build' / 'html' / 'index.html'}")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Sphinx build failed: {str(e)}")
+
+if __name__ == "__main__":
+    generator = DocumentationGenerator()
+    generator.generate_all_docs()
+```
+
+## 📋 README 자동 생성
+
+### README 템플릿 시스템
+```python
+# scripts/generate_readme.py
+import yaml
+import json
+from pathlib import Path
+from typing import Dict, List, Any
+
+class ReadmeGenerator:
+    """README.md 자동 생성기"""
+    
+    def __init__(self, config_file: str = "docs/readme_config.yaml"):
+        self.config_file = Path(config_file)
+        self.config = self._load_config()
+        
+    def _load_config(self) -> Dict[str, Any]:
+        """설정 파일 로드"""
+        with open(self.config_file, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+    
+    def generate_readme(self) -> str:
+        """README.md 내용 생성"""
+        sections = []
+        
+        # 헤더
+        sections.append(self._generate_header())
+        
+        # 배지
+        sections.append(self._generate_badges())
+        
+        # 목차
+        sections.append(self._generate_toc())
+        
+        # 주요 섹션들
+        for section_name in self.config.get('sections', []):
+            section_content = self._generate_section(section_name)
+            if section_content:
+                sections.append(section_content)
+        
+        return "\n\n".join(sections)
+    
+    def _generate_header(self) -> str:
+        """헤더 섹션 생성"""
+        project = self.config['project']
+        
+        header = f"# {project['name']}\n\n"
+        
+        if project.get('logo'):
+            header += f"![Logo](mdc:{project['logo']})\n\n"
+        
+        header += f"{project['description']}\n\n"
+        
+        if project.get('demo_gif'):
+            header += f"![Demo](mdc:{project['demo_gif']})\n\n"
+        
+        return header.strip()
+    
+    def _generate_badges(self) -> str:
+        """배지 섹션 생성"""
+        badges = self.config.get('badges', [])
+        if not badges:
+            return ""
+        
+        badge_lines = []
+        for badge in badges:
+            badge_md = f"[![{badge['alt']}]({badge['image']})]({badge.get('link', '#')})"
+            badge_lines.append(badge_md)
+        
+        return " ".join(badge_lines)
+    
+    def _generate_toc(self) -> str:
+        """목차 생성"""
+        sections = self.config.get('sections', [])
+        if not sections:
+            return ""
+        
+        toc_lines = ["## 📋 Table of Contents", ""]
+        
+        for section in sections:
+            section_config = self.config.get('section_configs', {}).get(section, {})
+            title = section_config.get('title', section.replace('_', ' ').title())
+            anchor = section.replace('_', '-').lower()
+            toc_lines.append(f"- [{title}](mdc:#{anchor})")
+        
+        return "\n".join(toc_lines)
+    
+    def _generate_section(self, section_name: str) -> str:
+        """개별 섹션 생성"""
+        method_name = f"_generate_{section_name}_section"
+        
+        if hasattr(self, method_name):
+            return getattr(self, method_name)()
+        else:
+            return self._generate_generic_section(section_name)
+    
+    def _generate_features_section(self) -> str:
+        """기능 섹션 생성"""
+        features = self.config.get('features', [])
+        if not features:
+            return ""
+        
+        lines = ["## ✨ Features", ""]
+        
+        for feature in features:
+            lines.append(f"- **{feature['name']}**: {feature['description']}")
+        
+        return "\n".join(lines)
+    
+    def _generate_installation_section(self) -> str:
+        """설치 섹션 생성"""
+        installation = self.config.get('installation', {})
+        if not installation:
+            return ""
+        
+        lines = ["## 🚀 Installation", ""]
+        
+        # 시스템 요구사항
+        if installation.get('requirements'):
+            lines.extend([
+                "### System Requirements",
+                ""
+            ])
+            for req in installation['requirements']:
+                lines.append(f"- {req}")
+            lines.append("")
+        
+        # 설치 단계
+        if installation.get('steps'):
+            lines.extend([
+                "### Installation Steps",
+                ""
+            ])
+            for i, step in enumerate(installation['steps'], 1):
+                lines.extend([
+                    f"{i}. {step['description']}",
+                    "",
+                    "```bash",
+                    step['command'],
+                    "```",
+                    ""
+                ])
+        
+        return "\n".join(lines)
+    
+    def _generate_usage_section(self) -> str:
+        """사용법 섹션 생성"""
+        usage = self.config.get('usage', {})
+        if not usage:
+            return ""
+        
+        lines = ["## 📖 Usage", ""]
+        
+        # 빠른 시작
+        if usage.get('quick_start'):
+            lines.extend([
+                "### Quick Start",
+                "",
+                "```python",
+                usage['quick_start'],
+                "```",
+                ""
+            ])
+        
+        # API 예제
+        if usage.get('api_examples'):
+            lines.extend([
+                "### API Examples",
+                ""
+            ])
+            for example in usage['api_examples']:
+                lines.extend([
+                    f"#### {example['title']}",
+                    "",
+                    example.get('description', ''),
+                    "",
+                    f"```{example.get('language', 'python')}",
+                    example['code'],
+                    "```",
+                    ""
+                ])
+        
+        return "\n".join(lines)
+    
+    def _generate_api_section(self) -> str:
+        """API 섹션 생성"""
+        api_config = self.config.get('api', {})
+        if not api_config:
+            return ""
+        
+        lines = ["## 🔌 API Reference", ""]
+        
+        if api_config.get('base_url'):
+            lines.extend([
+                f"**Base URL**: `{api_config['base_url']}`",
+                ""
+            ])
+        
+        if api_config.get('endpoints'):
+            lines.extend([
+                "### Endpoints",
+                ""
+            ])
+            
+            for endpoint in api_config['endpoints']:
+                lines.extend([
+                    f"#### {endpoint['method']} {endpoint['path']}",
+                    "",
+                    endpoint.get('description', ''),
+                    ""
+                ])
+                
+                if endpoint.get('example'):
+                    lines.extend([
+                        "**Example:**",
+                        "",
+                        "```bash",
+                        endpoint['example'],
+                        "```",
+                        ""
+                    ])
+        
+        if api_config.get('docs_url'):
+            lines.extend([
+                f"📚 [Complete API Documentation](mdc:{api_config['docs_url']})",
+                ""
+            ])
+        
+        return "\n".join(lines)
+    
+    def _generate_contributing_section(self) -> str:
+        """기여 가이드 섹션 생성"""
+        contributing = self.config.get('contributing', {})
+        if not contributing:
+            return ""
+        
+        lines = ["## 🤝 Contributing", ""]
+        
+        lines.extend([
+            "We welcome contributions! Please see our [Contributing Guide](mdc:CONTRIBUTING.md) for details.",
+            "",
+            "### Development Setup",
+            "",
+            "```bash",
+            "git clone https://github.com/company/vision-system.git",
+            "cd vision-system",
+            "pip install -r requirements-dev.txt",
+            "pre-commit install",
+            "```",
+            "",
+            "### Running Tests",
+            "",
+            "```bash",
+            "pytest tests/ --cov=src",
+            "```",
+            ""
+        ])
+        
+        return "\n".join(lines)
+    
+    def _generate_license_section(self) -> str:
+        """라이센스 섹션 생성"""
+        license_info = self.config.get('license', {})
+        if not license_info:
+            return ""
+        
+        lines = ["## 📄 License", ""]
+        
+        if license_info.get('name'):
+            lines.append(f"This project is licensed under the {license_info['name']}.")
+        
+        if license_info.get('file'):
+            lines.append(f"See the [LICENSE](mdc:{license_info['file']}) file for details.")
+        
+        return "\n".join(lines)
+    
+    def _generate_generic_section(self, section_name: str) -> str:
+        """일반 섹션 생성"""
+        section_config = self.config.get('section_configs', {}).get(section_name, {})
+        
+        if not section_config:
+            return ""
+        
+        title = section_config.get('title', section_name.replace('_', ' ').title())
+        content = section_config.get('content', '')
+        
+        return f"## {title}\n\n{content}"
+
+# README 설정 파일 예제
+readme_config_example = """
+project:
+  name: "Vision System"
+  description: "Advanced computer vision system for real-time object detection and analysis"
+  logo: "docs/images/logo.png"
+  demo_gif: "docs/images/demo.gif"
+
+badges:
+  - alt: "Build Status"
+    image: "https://github.com/company/vision-system/workflows/CI/badge.svg"
+    link: "https://github.com/company/vision-system/actions"
+  - alt: "Coverage"
+    image: "https://codecov.io/gh/company/vision-system/branch/main/graph/badge.svg"
+    link: "https://codecov.io/gh/company/vision-system"
+  - alt: "License"
+    image: "https://img.shields.io/badge/license-MIT-blue.svg"
+    link: "LICENSE"
+
+sections:
+  - features
+  - installation
+  - usage
+  - api
+  - contributing
+  - license
+
+features:
+  - name: "Real-time Processing"
+    description: "Process video streams in real-time with optimized performance"
+  - name: "Multi-camera Support"
+    description: "Manage multiple camera feeds simultaneously"
+  - name: "AI Model Integration"
+    description: "Easy integration with various AI models (YOLO, RCNN, etc.)"
+  - name: "RESTful API"
+    description: "Complete REST API for system integration"
+
+installation:
+  requirements:
+    - "Python 3.8+"
+    - "CUDA 11.8+ (for GPU support)"
+    - "OpenCV 4.5+"
+    - "8GB+ RAM"
+  
+  steps:
+    - description: "Clone the repository"
+      command: "git clone https://github.com/company/vision-system.git"
+    - description: "Install dependencies"
+      command: "pip install -r requirements.txt"
+    - description: "Download models"
+      command: "python scripts/download_models.py"
+
+usage:
+  quick_start: |
+    from src.vision_system import VisionSystem
+    
+    # Initialize system
+    vs = VisionSystem()
+    
+    # Add camera
+    vs.add_camera("cam1", "rtsp://192.168.1.100/stream")
+    
+    # Start processing
+    vs.start_processing("cam1")
+    
+    # Get results
+    results = vs.get_detections("cam1")
+  
+  api_examples:
+    - title: "Add Camera"
+      description: "Add a new camera to the system"
+      language: "bash"
+      code: |
+        curl -X POST "http://localhost:8000/cameras/" \\
+             -H "Content-Type: application/json" \\
+             -d '{"camera_id": "cam1", "rtsp_url": "rtsp://..."}'
+
+api:
+  base_url: "http://localhost:8000"
+  docs_url: "http://localhost:8000/docs"
+  endpoints:
+    - method: "POST"
+      path: "/cameras/"
+      description: "Add a new camera"
+      example: 'curl -X POST "http://localhost:8000/cameras/" -d \'{"camera_id": "cam1"}\''
+
+license:
+  name: "MIT License"
+  file: "LICENSE"
+"""
+
+if __name__ == "__main__":
+    # 설정 파일이 없으면 예제 생성
+    config_file = Path("docs/readme_config.yaml")
+    if not config_file.exists():
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_file, 'w', encoding='utf-8') as f:
+            f.write(readme_config_example)
+        print(f"Created example config file: {config_file}")
+    
+    # README 생성
+    generator = ReadmeGenerator()
+    readme_content = generator.generate_readme()
+    
+    with open("README.md", 'w', encoding='utf-8') as f:
+        f.write(readme_content)
+    
+    print("✅ README.md generated successfully!")
+```
+
+이 문서화 시스템 규칙들을 통해 API 문서, 사용자 가이드, 개발자 문서를 자동으로 생성하고 유지할 수 있습니다.
+

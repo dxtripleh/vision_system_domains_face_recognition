@@ -1,0 +1,241 @@
+# 기본 프로젝트 구조 규칙
+
+## 📁 현재 프로젝트 구조
+
+```
+vision_system/
+├── domains/                   # 도메인별 독립 개발
+│   └── face_recognition/      # 얼굴인식 도메인 (현재 개발 중)
+│       ├── core/              # 도메인 핵심 로직
+│       ├── infrastructure/    # 인프라 계층
+│       ├── interfaces/        # API 인터페이스
+│       └── runners/           # 실행 스크립트
+├── shared/                    # 공통 모듈
+│   └── vision_core/           # 비전 알고리즘 공통 기능
+├── common/                    # 범용 유틸리티
+├── config/                    # 설정 파일
+├── models/                    # 모델 저장소
+│   └── weights/               # 모델 가중치
+├── datasets/                  # 학습 데이터
+├── data/                      # 런타임 데이터
+│   ├── runtime/               # 런타임 임시 데이터
+│   └── domains/               # 도메인별 데이터
+└── scripts/                   # 개발 도구 스크립트
+```
+
+## 🔗 계층별 의존성 규칙
+
+### 의존성 방향 (위에서 아래로만 허용)
+```
+Level 4: domains/              # 도메인 계층
+    ↓
+Level 3: models/               # 모델 계층
+    ↓
+Level 2: shared/               # 공유 모듈 계층
+    ↓
+Level 1: common/, config/      # 기반 계층
+```
+
+### 금지 사항
+```python
+# ❌ 절대 금지: 도메인 간 직접 import
+from domains.face_recognition import something
+# 다른 도메인에서 사용 시
+
+# ❌ 절대 금지: 하위 계층에서 상위 계층 import
+from domains.face_recognition import something
+# common/ 폴더에서 사용 시
+
+# ✅ 올바른 방법: 공유 모듈을 통한 통신
+from shared.vision_core import FaceDetector
+```
+
+## 📂 도메인 구조 (DDD 패턴)
+
+### face_recognition 도메인 예시
+```
+domains/face_recognition/
+├── core/                      # 핵심 비즈니스 로직
+│   ├── entities/              # 엔티티
+│   ├── services/              # 도메인 서비스
+│   ├── repositories/          # 저장소 인터페이스
+│   └── value_objects/         # 값 객체
+├── infrastructure/            # 인프라 구현
+│   ├── models/                # AI 모델 구현
+│   ├── storage/               # 저장소 구현
+│   └── detection_engines/     # 검출 엔진
+├── interfaces/                # 외부 인터페이스
+│   ├── api/                   # REST API
+│   └── cli/                   # CLI 인터페이스
+└── runners/                   # 실행 스크립트
+    ├── recognition/           # 인식 관련
+    ├── data_collection/       # 데이터 수집
+    └── demos/                 # 데모 스크립트
+```
+
+## 🗂️ 파일 저장 위치 규칙
+
+### 데이터 파일 위치
+```python
+DATA_LOCATIONS = {
+    '런타임 임시 데이터': 'data/runtime/temp/',
+    '로그 파일': 'data/runtime/logs/',
+    '처리 결과': 'data/runtime/output/',
+    '도메인 데이터': 'data/domains/{domain_name}/',
+    '학습 데이터': 'datasets/{domain_name}/',
+    '모델 가중치': 'models/weights/',
+    '설정 파일': 'config/'
+}
+```
+
+### 금지 위치
+```python
+# ❌ 절대 금지: 루트 디렉토리에 임시 파일 생성
+FORBIDDEN_ROOT_FILES = [
+    "*.log",           # 로그 파일
+    "*.tmp",           # 임시 파일
+    "output_*",        # 결과물
+    "temp_*",          # 임시 파일
+    "debug_*",         # 디버그 파일
+]
+```
+
+## 📝 파일 네이밍 규칙
+
+### 도메인 내 파일 네이밍
+```python
+# 엔티티
+face.py
+person.py
+
+# 서비스
+face_detection_service.py
+face_recognition_service.py
+
+# 저장소
+face_repository.py
+person_repository.py
+
+# 모델
+retinaface_model.py
+arcface_model.py
+
+# 실행 스크립트
+run_face_recognition.py
+run_demo.py
+```
+
+### 모델 가중치 네이밍
+```python
+# 패턴: {task}_{architecture}_{dataset}_{date}.{ext}
+face_detection_retinaface_widerface_20250628.pt
+face_recognition_arcface_glint360k_20250628.onnx
+```
+
+## 🔧 필수 폴더 및 파일
+
+### 모든 Python 패키지 폴더
+```
+required_files = [
+    '__init__.py',     # 필수
+    'README.md'        # 권장
+]
+```
+
+### 도메인 폴더 필수 구조
+```
+domains/{domain_name}/
+├── __init__.py           # 필수
+├── README.md             # 필수
+├── core/
+│   ├── __init__.py       # 필수
+│   └── README.md         # 권장
+├── infrastructure/
+│   ├── __init__.py       # 필수
+│   └── README.md         # 권장
+├── interfaces/
+│   ├── __init__.py       # 필수
+│   └── README.md         # 권장
+└── runners/
+    ├── __init__.py       # 필수
+    └── README.md         # 권장
+```
+
+## 📊 폴더 용도 명확화
+
+### datasets/ vs data/ 구분
+```python
+# datasets/ - 학습 전용 (고정 데이터)
+datasets/face_recognition/
+├── raw/                  # 원본 학습 데이터
+├── processed/            # 전처리된 데이터
+├── annotations/          # 라벨링 데이터
+└── splits/               # train/val/test 분할
+
+# data/ - 런타임 전용 (동적 데이터)
+data/
+├── runtime/              # 시스템 런타임 데이터
+│   ├── temp/             # 임시 파일 (자동 정리)
+│   ├── logs/             # 로그 파일
+│   └── output/           # 결과물
+└── domains/              # 도메인별 데이터
+    └── face_recognition/ # 얼굴인식 도메인 데이터
+```
+
+## 🚫 구조 위반 사례
+
+### 1. 의존성 순환
+```python
+# ❌ 금지: 순환 의존성
+# common/utils.py
+from domains.face_recognition.core.services import FaceService
+
+# domains/face_recognition/core/services.py  
+from common.utils import some_function
+```
+
+### 2. 잘못된 파일 위치
+```python
+# ❌ 금지: 임시 파일을 잘못된 위치에 저장
+output_file = "captured_frame.jpg"  # 루트에 저장
+
+# ✅ 올바른 위치
+output_file = "data/runtime/output/captured_frame.jpg"
+```
+
+### 3. 하드코딩된 경로
+```python
+# ❌ 금지: 하드코딩된 경로
+model_path = "C:/Users/user/models/face_detection.pt"
+
+# ✅ 올바른 방법
+model_path = "models/weights/face_detection_retinaface_widerface_20250628.pt"
+```
+
+## 📏 구조 검증 방법
+
+### 기본 검증 스크립트
+```python
+def validate_basic_structure():
+    """기본 프로젝트 구조 검증"""
+    required_folders = [
+        'domains', 'shared', 'common', 'config', 
+        'models/weights', 'data/runtime', 'scripts'
+    ]
+    
+    for folder in required_folders:
+        if not Path(folder).exists():
+            print(f"❌ Missing required folder: {folder}")
+            return False
+    
+    print("✅ Basic structure is valid")
+    return True
+```
+
+---
+
+**적용 우선순위**:
+1. 데이터 파일 위치 준수 (필수)
+2. 의존성 방향 준수 (필수)
+3. 도메인 구조 준수 (권장)
+4. 파일 네이밍 준수 (권장) 

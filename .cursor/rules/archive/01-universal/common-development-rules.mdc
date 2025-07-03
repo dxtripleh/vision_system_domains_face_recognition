@@ -1,0 +1,1077 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 공통 개발 규칙 (Common Development Rules)
+
+이 규칙은 프로젝트 유형에 관계없이 모든 Python 프로젝트에 적용할 수 있는 일반적인 개발 표준입니다.
+
+## 📝 파일 네이밍 규칙
+
+### Python 파일 네이밍 컨벤션
+- **실행 파일**: `run_*.py` (예: `run_main_process.py`)
+- **테스트 파일**: `test_*.py` (예: `test_main_module.py`)
+- **인터페이스 파일**: `*_interface.py` (예: `api_interface.py`)
+- **설정 파일**: `*_config.py` (예: `database_config.py`)
+- **유틸리티 파일**: `*_utils.py` (예: `string_utils.py`)
+- **모델 파일**: `*_model.py` (예: `data_model.py`)
+
+### 변수 및 함수 네이밍
+- **변수/함수**: snake_case (예: `process_data`, `user_count`)
+- **클래스**: PascalCase (예: `DataProcessor`, `UserManager`)
+- **상수**: UPPER_SNAKE_CASE (예: `MAX_RETRY_COUNT`, `DEFAULT_TIMEOUT`)
+- **모듈**: snake_case (예: `data_processing`, `user_management`)
+- **패키지**: lowercase (예: `utils`, `models`)
+
+## 🐍 Python 코딩 표준
+
+### 파일 헤더 (모든 .py 파일 필수)
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+모듈 설명.
+
+이 모듈은 [기능 설명]을 제공합니다.
+
+Example:
+    기본적인 사용 예시를 여기에 작성합니다.
+    
+    $ python run_main_process.py --input data.csv
+"""
+
+import os
+import sys
+import logging
+from typing import Dict, List, Optional, Tuple, Union
+```
+
+### Import 순서 (엄격히 준수)
+1. 표준 라이브러리
+2. 서드파티 라이브러리  
+3. 로컬 애플리케이션/라이브러리
+4. 상대 import (같은 폴더 내)
+
+```python
+# 표준 라이브러리
+import os
+import sys
+import logging
+from pathlib import Path
+
+# 서드파티 라이브러리
+import numpy as np
+import pandas as pd
+import yaml
+
+# 로컬 애플리케이션
+from common.logging import get_logger
+from common.config import load_config
+from core.base import BaseProcessor
+
+# 상대 import
+from .utils import preprocess_data
+from .models import DataModel
+```
+
+### Type Hints 필수 사용
+```python
+def process_data(
+    data: List[Dict[str, Union[str, int]]],
+    config: Dict[str, Any],
+    output_path: Optional[str] = None
+) -> Tuple[bool, str]:
+    """데이터 처리 함수"""
+    pass
+```
+
+### Docstring 필수 작성 (Google Style)
+```python
+def process_data(data: List[Dict], config: Dict) -> Tuple[bool, str]:
+    """데이터를 처리하는 함수.
+    
+    Args:
+        data: 처리할 데이터 리스트
+        config: 설정 딕셔너리
+        
+    Returns:
+        (성공 여부, 결과 메시지) 튜플
+        
+    Raises:
+        ValueError: 입력 데이터가 유효하지 않은 경우
+        
+    Example:
+        >>> data = [{'id': 1, 'value': 'test'}]
+        >>> config = {'mode': 'strict'}
+        >>> success, message = process_data(data, config)
+    """
+    pass
+```
+
+### 에러 처리 및 로깅
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+def safe_process():
+    """안전한 함수 실행 패턴"""
+    try:
+        # 메인 로직
+        result = process_data()
+        logger.info("Processing completed successfully")
+        return result
+    except Exception as e:
+        logger.error(f"Error in {__name__}: {str(e)}")
+        raise
+```
+
+## 🔧 개발 도구 자동화 규칙
+
+### 코딩 도구 설정 및 설치
+```python
+# scripts/setup_coding_tools.py 예시
+REQUIRED_TOOLS = {
+    'black': {
+        'version': '23.3.0',
+        'purpose': 'Python 코드 자동 포맷팅',
+        'config_file': 'pyproject.toml',
+        'installation': 'pip install black==23.3.0'
+    },
+    'isort': {
+        'version': '5.12.0',
+        'purpose': 'Python import 문 자동 정렬',
+        'config_file': 'pyproject.toml',
+        'installation': 'pip install isort==5.12.0'
+    },
+    'flake8': {
+        'version': '6.0.0',
+        'purpose': 'Python 코드 린팅',
+        'config_file': '.flake8',
+        'installation': 'pip install flake8==6.0.0'
+    },
+    'pylint': {
+        'version': '2.17.0',
+        'purpose': 'Python 코드 정적 분석',
+        'config_file': '.pylintrc',
+        'installation': 'pip install pylint==2.17.0'
+    },
+    'mypy': {
+        'version': '1.3.0',
+        'purpose': 'Python 타입 체킹',
+        'config_file': 'pyproject.toml',
+        'installation': 'pip install mypy==1.3.0'
+    }
+}
+
+def setup_development_tools():
+    """개발 도구 자동 설치 및 설정"""
+    for tool_name, tool_config in REQUIRED_TOOLS.items():
+        install_tool(tool_name, tool_config)
+        generate_config_file(tool_name, tool_config)
+```
+
+### Git 훅 자동 설정
+```python
+# scripts/setup_git_hooks.py 예시
+GIT_HOOKS = {
+    'pre-commit': {
+        'checks': ['validate_rules', 'code_style_check', 'docstring_check'],
+        'path': 'scripts/git_hooks/pre-commit'
+    },
+    'pre-push': {
+        'checks': ['validate_rules', 'security_check'],
+        'path': 'scripts/git_hooks/pre-push'
+    },
+    'commit-msg': {
+        'checks': ['check_commit_message'],
+        'path': 'scripts/git_hooks/commit-msg'
+    }
+}
+
+def setup_git_hooks():
+    """Git 훅 자동 설치"""
+    for hook_name, hook_config in GIT_HOOKS.items():
+        install_git_hook(hook_name, hook_config)
+```
+
+### 코드 스타일 자동 검사
+```python
+# scripts/check_code_style.py 예시
+def check_code_style(files=None, auto_fix=False):
+    """
+    코드 스타일 검사 스크립트
+    
+    Args:
+        files: 검사할 파일 목록 (None이면 전체)
+        auto_fix: 자동 수정 여부
+    
+    Returns:
+        검사 결과 딕셔너리
+    """
+    results = {}
+    
+    # Black 코드 포맷팅 검사
+    if auto_fix:
+        subprocess.run(['black', '.'], check=True)
+    else:
+        result = subprocess.run(['black', '--check', '.'], capture_output=True)
+        results['black'] = {'passed': result.returncode == 0, 'output': result.stdout.decode()}
+    
+    # isort import 정렬 검사
+    if auto_fix:
+        subprocess.run(['isort', '.'], check=True)
+    else:
+        result = subprocess.run(['isort', '--check-only', '.'], capture_output=True)
+        results['isort'] = {'passed': result.returncode == 0, 'output': result.stdout.decode()}
+    
+    # flake8 린팅 검사
+    result = subprocess.run(['flake8', '.'], capture_output=True)
+    results['flake8'] = {'passed': result.returncode == 0, 'output': result.stdout.decode()}
+    
+    return results
+```
+
+## 📊 데이터셋 관리 규칙
+
+### 데이터셋 구조 표준화
+```python
+# 표준 데이터셋 구조
+DATASET_STRUCTURE = {
+    'raw': '원본 데이터 (수정 금지)',
+    'processed': {
+        'aligned': '정렬된 이미지',
+        'resized': '크기 조정된 이미지',
+        'ready': '학습 준비 완료된 이미지'
+    },
+    'augmented': {
+        'flip': '좌우 반전된 이미지',
+        'bright': '밝기 조정된 이미지',
+        'rot': '회전된 이미지',
+        'zoom': '확대/축소된 이미지'
+    },
+    'annotations': {
+        'bounding_box': '바운딩 박스 주석',
+        'landmarks': '랜드마크 주석',
+        'segmentation': '세그멘테이션 주석'
+    },
+    'metadata': {
+        'class_map.json': '클래스 ID-이름 매핑',
+        'train.txt': '학습 데이터셋 파일 목록',
+        'val.txt': '검증 데이터셋 파일 목록',
+        'test.txt': '테스트 데이터셋 파일 목록',
+        'stats.json': '데이터셋 통계 정보'
+    }
+}
+
+# 데이터셋 파일 네이밍 규칙
+DATASET_NAMING_RULES = {
+    'pattern': '{domain}_{class}_{date}_{info}_{index}.{ext}',
+    'date_format': '%Y%m%d',
+    'augmented_pattern': '{original_name}_{augment_type}[_{param}].{ext}',
+    'examples': [
+        'face_happy_20240624_indoor_001.jpg',
+        'object_detection_person_20240624_outdoor_001.jpg',
+        'face_happy_20240624_indoor_001_flip.jpg',
+        'face_happy_20240624_indoor_001_bright_120.jpg'
+    ]
+}
+```
+
+### 모듈 구조 표준화
+```python
+# 표준 모듈 구조
+MODULE_STRUCTURE = {
+    'required_files': [
+        '{module_name}_pipeline.py',    # 핵심 파이프라인
+        '{module_name}_interface.py',   # 외부 연동 인터페이스
+        'run_{module_name}.py',         # 실행 스크립트
+        'README.md'                     # 문서
+    ],
+    'optional_files': [
+        '{module_name}_config.yaml',    # 설정 파일
+        'STRUCTURE.md',                 # 구조 설명
+        'CHANGELOG.md'                  # 변경 이력
+    ],
+    'optional_dirs': [
+        'processors/',                  # 처리기
+        'utils/',                      # 유틸리티
+        'tests/'                       # 테스트
+    ]
+}
+
+# 모듈 개발 가이드라인
+MODULE_GUIDELINES = {
+    'minimum_features': 2,  # 최소 2개 이상의 features 결합
+    'independence': True,   # 독립적 사용 가능
+    'interface_clarity': True,  # 명확한 인터페이스 정의
+    'documentation_required': ['README.md', 'docstrings'],
+    'testing_required': ['integration_tests']
+}
+```
+
+## 🔧 스크립트 관리 규칙
+
+### 스크립트 분류 및 네이밍
+```python
+# 스크립트 카테고리별 네이밍 규칙
+SCRIPT_CATEGORIES = {
+    'setup': {
+        'prefix': 'setup_',
+        'purpose': '개발 환경 설정 및 초기화',
+        'location': 'scripts/',
+        'examples': ['setup_coding_tools.py', 'setup_git_hooks.py']
+    },
+    'validate': {
+        'prefix': 'validate_',
+        'purpose': '데이터 및 설정 검증',
+        'location': 'scripts/validation/',
+        'examples': ['validate_structure.py', 'validate_config.py']
+    },
+    'download': {
+        'prefix': 'download_',
+        'purpose': '모델 및 리소스 다운로드',
+        'location': 'scripts/model_management/',
+        'examples': ['download_models.py', 'download_opencv_cascades.py']
+    },
+    'cleanup': {
+        'prefix': 'cleanup_',
+        'purpose': '정리 및 최적화',
+        'location': 'scripts/',
+        'examples': ['cleanup_models.py', 'cleanup_temp_files.py']
+    }
+}
+
+def validate_script_naming(script_path):
+    """스크립트 네이밍 규칙 검증"""
+    script_name = os.path.basename(script_path)
+    
+    for category, config in SCRIPT_CATEGORIES.items():
+        if script_name.startswith(config['prefix']):
+            expected_location = config['location']
+            actual_location = os.path.dirname(script_path) + '/'
+            
+            if not actual_location.endswith(expected_location):
+                return {
+                    'valid': False,
+                    'message': f"Script {script_name} should be in {expected_location}"
+                }
+    
+    return {'valid': True}
+```
+
+### 코드 승격 규칙
+```python
+# 코드 승격 기준
+CODE_PROMOTION_CRITERIA = {
+    'reusability': {
+        'description': '여러 모듈에서 재사용 가능성',
+        'weight': 0.3,
+        'threshold': 0.7
+    },
+    'stability': {
+        'description': '코드의 안정성 및 테스트 커버리지',
+        'weight': 0.25,
+        'threshold': 0.8
+    },
+    'generality': {
+        'description': '코드의 범용성',
+        'weight': 0.25,
+        'threshold': 0.7
+    },
+    'duplication': {
+        'description': '코드 중복 정도',
+        'weight': 0.2,
+        'threshold': 0.6
+    }
+}
+
+def analyze_promotion_candidate(file_path):
+    """코드 승격 후보 분석"""
+    scores = {}
+    
+    # 재사용성 분석
+    scores['reusability'] = analyze_reusability(file_path)
+    
+    # 안정성 분석
+    scores['stability'] = analyze_stability(file_path)
+    
+    # 범용성 분석
+    scores['generality'] = analyze_generality(file_path)
+    
+    # 중복 분석
+    scores['duplication'] = analyze_duplication(file_path)
+    
+    # 총점 계산
+    total_score = sum(
+        scores[criterion] * config['weight']
+        for criterion, config in CODE_PROMOTION_CRITERIA.items()
+    )
+    
+    # 승격 자격 판정
+    eligible = all(
+        scores[criterion] >= config['threshold']
+        for criterion, config in CODE_PROMOTION_CRITERIA.items()
+    )
+    
+    return {
+        'file_path': file_path,
+        'total_score': total_score,
+        'scores': scores,
+        'eligible': eligible,
+        'recommendation': 'promote' if eligible and total_score >= 0.7 else 'keep'
+    }
+```
+
+## 🎯 품질 보증 규칙
+
+### 자동화된 품질 검사
+```python
+# 품질 검사 항목
+QUALITY_CHECKS = {
+    'code_style': {
+        'tools': ['black', 'isort', 'flake8'],
+        'auto_fix': ['black', 'isort'],
+        'manual_fix': ['flake8']
+    },
+    'type_checking': {
+        'tools': ['mypy'],
+        'auto_fix': [],
+        'manual_fix': ['mypy']
+    },
+    'security': {
+        'tools': ['bandit', 'safety'],
+        'auto_fix': [],
+        'manual_fix': ['bandit', 'safety']
+    },
+    'documentation': {
+        'tools': ['pydocstyle'],
+        'auto_fix': [],
+        'manual_fix': ['pydocstyle']
+    }
+}
+
+def run_quality_checks(check_types=None, auto_fix=False):
+    """품질 검사 실행"""
+    if check_types is None:
+        check_types = list(QUALITY_CHECKS.keys())
+    
+    results = {}
+    
+    for check_type in check_types:
+        if check_type not in QUALITY_CHECKS:
+            results[check_type] = {'status': 'error', 'message': f'Unknown check: {check_type}'}
+            continue
+        
+        check_config = QUALITY_CHECKS[check_type]
+        check_results = {}
+        
+        for tool in check_config['tools']:
+            if auto_fix and tool in check_config['auto_fix']:
+                # 자동 수정 실행
+                result = run_tool_with_fix(tool)
+            else:
+                # 검사만 실행
+                result = run_tool_check(tool)
+            
+            check_results[tool] = result
+        
+        results[check_type] = {
+            'status': 'success' if all(r['passed'] for r in check_results.values()) else 'failed',
+            'tools': check_results
+        }
+    
+    return results
+```
+
+이러한 규칙들은 프로젝트의 일관성과 품질을 보장하는 데 중요한 역할을 합니다.
+        files: 검사할 파일 목록 (None이면 전체)
+        auto_fix: 자동 수정 여부
+    
+    Returns:
+        검사 결과 딕셔너리
+    """
+    results = {
+        'black': run_black_check(files, auto_fix),
+        'isort': run_isort_check(files, auto_fix),
+        'flake8': run_flake8_check(files),
+        'pylint': run_pylint_check(files),
+        'mypy': run_mypy_check(files)
+    }
+    
+    # 결과 리포트 생성
+    generate_style_report(results)
+    
+    return results
+```
+
+### 규칙 검증 자동화
+```python
+# scripts/validate_rules.py 예시
+def validate_project_rules():
+    """프로젝트 규칙 준수 검증"""
+    validations = {
+        'file_naming': validate_file_naming_rules(),
+        'import_order': validate_import_order(),
+        'docstring': validate_docstring_rules(),
+        'type_hints': validate_type_hints(),
+        'structure': validate_project_structure()
+    }
+    
+    # CI/CD에서 사용할 수 있도록 exit code 설정
+    if all(validations.values()):
+        print("✓ 모든 규칙 검증 통과")
+        return 0
+    else:
+        print("✗ 규칙 위반 발견")
+        return 1
+```
+
+## 📂 프로젝트 구조 표준
+
+### 최소 필수 폴더 구조
+```
+project_root/
+├── src/                    # 소스 코드
+│   ├── __init__.py
+│   ├── main.py
+│   ├── config/
+│   ├── utils/
+│   └── models/
+├── datasets/               # 🎯 학습 전용 데이터 (ML 데이터셋)
+│   ├── raw/                # 원본 데이터
+│   ├── processed/          # 전처리된 데이터
+│   ├── annotations/        # 라벨링 데이터
+│   └── splits/             # train/val/test 분할
+├── data/                   # 🎯 런타임 전용 데이터
+│   ├── temp/               # 임시 파일 (자동 정리)
+│   ├── logs/               # 로그 파일
+│   └── output/             # 결과물 저장
+├── tests/                  # 테스트 코드
+│   ├── __init__.py
+│   ├── unit/
+│   ├── integration/
+│   └── conftest.py
+├── docs/                   # 문서
+├── config/                 # 설정 파일
+├── models/                 # 모델 저장소
+│   ├── weights/            # 모델 가중치
+│   ├── metadata/           # 모델 메타데이터
+│   └── configs/            # 모델 설정
+├── scripts/                # 개발 도구 스크립트
+│   ├── setup_coding_tools.py
+│   ├── setup_git_hooks.py
+│   ├── check_code_style.py
+│   └── validate_rules.py
+├── requirements.txt        # 의존성
+├── pyproject.toml         # 프로젝트 설정
+├── .flake8               # Flake8 설정
+├── .pylintrc             # Pylint 설정
+├── README.md              # 프로젝트 설명
+└── .gitignore             # Git 무시 파일
+```
+
+## ⚠️ **중요한 파일 관리 규칙**
+
+### **🚫 절대 금지 사항**
+```python
+# ❌ 절대 금지: 루트 디렉토리에 임시 파일, 로그 파일 생성
+FORBIDDEN_ROOT_FILES = [
+    "*.log",           # 로그 파일 → data/logs/ 에 저장
+    "*.tmp",           # 임시 파일 → data/temp/ 에 저장
+    "output_*",        # 결과물 → data/output/ 에 저장
+    "temp_*",          # 임시 파일 → data/temp/ 에 저장
+    "cache_*",         # 캐시 파일 → data/temp/ 에 저장
+    "debug_*",         # 디버그 파일 → data/logs/ 에 저장
+    "result_*",        # 결과 파일 → data/output/ 에 저장
+    "test_output_*",   # 테스트 결과 → data/output/ 에 저장
+]
+
+# ✅ 올바른 파일 저장 위치
+CORRECT_FILE_LOCATIONS = {
+    'logs': 'data/logs/',           # 모든 로그 파일
+    'temp': 'data/temp/',           # 모든 임시 파일
+    'output': 'data/output/',       # 모든 결과물
+    'models': 'models/weights/',    # 모델 가중치
+    'datasets': 'datasets/',        # 학습 데이터
+    'config': 'config/',            # 설정 파일
+}
+```
+
+### **📂 데이터 폴더 구분 원칙**
+```python
+# 🎯 datasets/ = 학습 전용 (ML 데이터셋)
+DATASETS_PURPOSE = {
+    'raw/': '원본 학습 데이터 (이미지, 비디오, 텍스트)',
+    'processed/': '전처리된 학습 데이터',
+    'annotations/': '라벨링 데이터 (YOLO, COCO, JSON, CSV)',
+    'splits/': 'train/validation/test 분할 정보'
+}
+
+# 🎯 data/ = 런타임 전용 (실행 중 생성되는 데이터)
+DATA_PURPOSE = {
+    'temp/': '임시 파일 (자동 정리, 24시간 보관)',
+    'logs/': '시스템 로그, 에러 로그 (30일 보관)',
+    'output/': '추론 결과, 처리 결과물 (사용자 정의 보관)'
+}
+
+# 🎯 models/ = 모델 저장소
+MODELS_PURPOSE = {
+    'weights/': '학습된 모델 가중치 (.pt, .onnx, .h5)',
+    'metadata/': '모델 메타데이터 (성능, 버전 정보)',
+    'configs/': '모델 설정 파일 (.yaml, .json)'
+}
+```
+
+### **파일 네이밍 및 저장 규칙**
+```python
+# 파일 네이밍 규칙
+FILE_NAMING_RULES = {
+    'logs': 'data/logs/{component}_{date}.log',
+    'temp': 'data/temp/temp_{purpose}_{timestamp}.{ext}',
+    'output': 'data/output/{purpose}_{date}.{ext}',
+    'models': 'models/weights/{task}_{architecture}_{dataset}_{date}.{ext}',
+    'datasets': 'datasets/{domain}/{category}/{filename}.{ext}',
+}
+
+# 예시
+EXAMPLES = {
+    'training_log': 'data/logs/face_recognition_20250628.log',
+    'temp_image': 'data/temp/temp_aligned_face_20250628_143022.jpg',
+    'inference_result': 'data/output/recognition_results_20250628.json',
+    'model_weight': 'models/weights/face_detection_yolov8n_wider_20250628.pt',
+    'dataset_image': 'datasets/face_recognition/raw/person_001/face_001.jpg',
+}
+```
+
+## 🧪 비전 시스템 테스트 전략 규칙
+
+### 실시간 비전 처리 테스트
+```python
+import pytest
+import time
+import threading
+import numpy as np
+from unittest.mock import Mock, patch
+from typing import List, Dict, Tuple
+
+class VisionSystemTestFramework:
+    """비전 시스템 전용 테스트 프레임워크"""
+    
+    def __init__(self):
+        self.test_data_path = "tests/data"
+        self.benchmark_thresholds = {
+            'fps_min': 15.0,
+            'latency_max_ms': 100.0,
+            'memory_max_mb': 512.0,
+            'accuracy_min': 0.85
+        }
+    
+    def setup_test_environment(self):
+        """테스트 환경 설정"""
+        # 테스트용 가짜 카메라 설정
+        self.mock_camera = self._create_mock_camera()
+        
+        # 테스트용 모델 로딩
+        self.test_model = self._load_test_model()
+        
+        # 성능 모니터링 설정
+        self.performance_monitor = PerformanceMonitor()
+
+class RealTimeProcessingTest:
+    """실시간 처리 성능 테스트"""
+    
+    @pytest.fixture
+    def sample_frames(self):
+        """테스트용 샘플 프레임 생성"""
+        frames = []
+        for i in range(100):
+            # 다양한 해상도의 테스트 프레임 생성
+            frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+            frames.append(frame)
+        return frames
+    
+    @pytest.fixture
+    def real_time_processor(self):
+        """실시간 처리기 픽스처"""
+        mock_model = Mock()
+        processor = RealTimeProcessor(mock_model, device='cpu')
+        yield processor
+        processor.stop()
+    
+    def test_frame_drop_handling(self, real_time_processor, sample_frames):
+        """프레임 드롭 처리 테스트"""
+        dropped_frames = 0
+        processed_frames = 0
+        
+        # 버퍼 크기보다 많은 프레임 빠르게 투입
+        for frame in sample_frames:
+            success = real_time_processor.frame_buffer.put_frame(frame)
+            if not success:
+                dropped_frames += 1
+            else:
+                processed_frames += 1
+        
+        # 프레임 드롭이 적절히 발생했는지 확인
+        assert dropped_frames > 0, "프레임 드롭이 발생하지 않음"
+        assert processed_frames > 0, "처리된 프레임이 없음"
+        
+        # 드롭률이 임계값 이하인지 확인
+        drop_rate = dropped_frames / len(sample_frames)
+        assert drop_rate < 0.3, f"프레임 드롭률이 너무 높음: {drop_rate:.2%}"
+    
+    def test_latency_measurement(self, real_time_processor, sample_frames):
+        """지연시간 측정 테스트"""
+        latencies = []
+        
+        for frame in sample_frames[:10]:  # 10개 프레임으로 테스트
+            start_time = time.time()
+            
+            # 프레임 처리
+            real_time_processor.frame_buffer.put_frame(frame)
+            result = real_time_processor.frame_buffer.get_frame()
+            
+            if result:
+                latency = (time.time() - start_time) * 1000  # ms 단위
+                latencies.append(latency)
+        
+        # 평균 지연시간 검증
+        avg_latency = np.mean(latencies)
+        assert avg_latency < 100, f"평균 지연시간이 너무 높음: {avg_latency:.1f}ms"
+        
+        # P95 지연시간 검증
+        p95_latency = np.percentile(latencies, 95)
+        assert p95_latency < 150, f"P95 지연시간이 너무 높음: {p95_latency:.1f}ms"
+    
+    @pytest.mark.performance
+    def test_fps_benchmark(self, real_time_processor):
+        """FPS 벤치마크 테스트"""
+        fps_counter = FPSCounter()
+        test_duration = 5.0  # 5초간 테스트
+        
+        start_time = time.time()
+        frame_count = 0
+        
+        while time.time() - start_time < test_duration:
+            # 가짜 프레임 생성 및 처리
+            frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+            real_time_processor.frame_buffer.put_frame(frame)
+            
+            current_fps = fps_counter.tick()
+            frame_count += 1
+            
+            time.sleep(0.01)  # 10ms 대기
+        
+        final_fps = fps_counter.tick()
+        
+        # FPS 임계값 검증
+        assert final_fps >= 15.0, f"FPS가 너무 낮음: {final_fps:.1f}"
+        assert frame_count > 0, "처리된 프레임이 없음"
+
+class ModelPerformanceTest:
+    """모델 성능 회귀 테스트"""
+    
+    @pytest.fixture
+    def benchmark_dataset(self):
+        """벤치마크 데이터셋"""
+        return {
+            'images': self._load_test_images(),
+            'annotations': self._load_test_annotations(),
+            'expected_metrics': {
+                'mAP': 0.85,
+                'mAP50': 0.92,
+                'precision': 0.88,
+                'recall': 0.83
+            }
+        }
+    
+    def test_model_accuracy_regression(self, benchmark_dataset):
+        """모델 정확도 회귀 테스트"""
+        model = self._load_production_model()
+        
+        # 벤치마크 실행
+        results = self._run_benchmark(model, benchmark_dataset)
+        
+        # 성능 메트릭 검증
+        for metric, expected_value in benchmark_dataset['expected_metrics'].items():
+            actual_value = results[metric]
+            tolerance = 0.02  # 2% 허용 오차
+            
+            assert actual_value >= expected_value - tolerance, \
+                f"{metric} 성능 저하: {actual_value:.3f} < {expected_value:.3f}"
+    
+    def test_inference_speed_benchmark(self):
+        """추론 속도 벤치마크"""
+        model = self._load_production_model()
+        test_image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+        
+        # 워밍업
+        for _ in range(10):
+            _ = model(test_image)
+        
+        # 실제 측정
+        inference_times = []
+        for _ in range(100):
+            start_time = time.time()
+            _ = model(test_image)
+            inference_time = (time.time() - start_time) * 1000  # ms
+            inference_times.append(inference_time)
+        
+        # 성능 검증
+        avg_time = np.mean(inference_times)
+        p95_time = np.percentile(inference_times, 95)
+        
+        assert avg_time < 50, f"평균 추론 시간이 너무 느림: {avg_time:.1f}ms"
+        assert p95_time < 80, f"P95 추론 시간이 너무 느림: {p95_time:.1f}ms"
+
+class HardwareCompatibilityTest:
+    """하드웨어 호환성 테스트"""
+    
+    @pytest.mark.gpu
+    def test_gpu_compatibility(self):
+        """GPU 호환성 테스트"""
+        if not torch.cuda.is_available():
+            pytest.skip("GPU가 사용 불가능")
+        
+        # GPU 메모리 테스트
+        device = torch.device('cuda')
+        test_tensor = torch.randn(1000, 1000, device=device)
+        
+        # 메모리 사용량 확인
+        memory_used = torch.cuda.memory_allocated() / 1024**2  # MB
+        assert memory_used > 0, "GPU 메모리가 사용되지 않음"
+        
+        # GPU 연산 테스트
+        result = torch.matmul(test_tensor, test_tensor.T)
+        assert result.device == device, "GPU에서 연산되지 않음"
+    
+    @pytest.mark.cpu
+    def test_cpu_fallback(self):
+        """CPU 폴백 테스트"""
+        # GPU 사용 불가능한 환경 시뮬레이션
+        with patch('torch.cuda.is_available', return_value=False):
+            processor = RealTimeProcessor(Mock(), device='cpu')
+            
+            # CPU에서 정상 동작 확인
+            test_frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+            success = processor.frame_buffer.put_frame(test_frame)
+            assert success, "CPU 환경에서 프레임 처리 실패"
+    
+    @pytest.mark.jetson
+    def test_jetson_optimization(self):
+        """Jetson 플랫폼 최적화 테스트"""
+        # Jetson 환경 감지
+        is_jetson = self._detect_jetson_platform()
+        
+        if not is_jetson:
+            pytest.skip("Jetson 플랫폼이 아님")
+        
+        # Jetson 특화 최적화 확인
+        processor = RealTimeProcessor(Mock(), device='cuda')
+        
+        # TensorRT 사용 여부 확인
+        assert hasattr(processor.model, 'trt_engine'), "TensorRT 엔진이 없음"
+
+class CameraStreamStabilityTest:
+    """카메라 스트림 안정성 테스트"""
+    
+    def test_camera_connection_stability(self):
+        """카메라 연결 안정성 테스트"""
+        camera_manager = MockCameraManager()
+        
+        # 연결 테스트
+        success = camera_manager.connect()
+        assert success, "카메라 연결 실패"
+        
+        # 스트림 안정성 테스트 (30초간)
+        stable_duration = 30.0
+        start_time = time.time()
+        frame_count = 0
+        error_count = 0
+        
+        while time.time() - start_time < stable_duration:
+            try:
+                frame = camera_manager.get_frame()
+                if frame is not None:
+                    frame_count += 1
+                else:
+                    error_count += 1
+            except Exception:
+                error_count += 1
+            
+            time.sleep(0.033)  # 30 FPS
+        
+        # 안정성 검증
+        error_rate = error_count / (frame_count + error_count)
+        assert error_rate < 0.05, f"에러율이 너무 높음: {error_rate:.2%}"
+        assert frame_count > 0, "프레임을 받지 못함"
+    
+    def test_multiple_camera_sync(self):
+        """다중 카메라 동기화 테스트"""
+        camera_count = 3
+        cameras = [MockCameraManager(f"cam_{i}") for i in range(camera_count)]
+        
+        # 모든 카메라 연결
+        for cam in cameras:
+            assert cam.connect(), f"카메라 {cam.id} 연결 실패"
+        
+        # 동기화 테스트
+        sync_tolerance_ms = 50  # 50ms 허용 오차
+        
+        for _ in range(100):  # 100 프레임 테스트
+            timestamps = []
+            
+            for cam in cameras:
+                frame_data = cam.get_frame_with_timestamp()
+                timestamps.append(frame_data['timestamp'])
+            
+            # 타임스탬프 동기화 확인
+            max_diff = (max(timestamps) - min(timestamps)) * 1000  # ms
+            assert max_diff < sync_tolerance_ms, \
+                f"카메라 동기화 오차가 너무 큼: {max_diff:.1f}ms"
+
+class MemoryLeakTest:
+    """메모리 누수 테스트"""
+    
+    def test_long_running_memory_stability(self):
+        """장시간 실행 메모리 안정성 테스트"""
+        import psutil
+        import gc
+        
+        process = psutil.Process()
+        initial_memory = process.memory_info().rss / 1024**2  # MB
+        
+        processor = RealTimeProcessor(Mock(), device='cpu')
+        processor.start_processing()
+        
+        # 1시간 시뮬레이션 (실제로는 10초로 축소)
+        test_duration = 10.0
+        start_time = time.time()
+        
+        memory_samples = []
+        
+        while time.time() - start_time < test_duration:
+            # 프레임 처리
+            frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+            processor.frame_buffer.put_frame(frame)
+            
+            # 메모리 사용량 측정
+            current_memory = process.memory_info().rss / 1024**2
+            memory_samples.append(current_memory)
+            
+            time.sleep(0.1)
+        
+        processor.stop()
+        
+        # 메모리 누수 검증
+        final_memory = process.memory_info().rss / 1024**2
+        memory_increase = final_memory - initial_memory
+        
+        # 100MB 이상 증가하면 누수로 판단
+        assert memory_increase < 100, \
+            f"메모리 누수 의심: {memory_increase:.1f}MB 증가"
+        
+        # 메모리 사용량이 지속적으로 증가하는지 확인
+        if len(memory_samples) > 10:
+            trend = np.polyfit(range(len(memory_samples)), memory_samples, 1)[0]
+            assert trend < 1.0, f"메모리 사용량이 지속적으로 증가: {trend:.2f}MB/s"
+
+# 테스트 실행 설정
+pytest_plugins = [
+    "pytest_benchmark",
+    "pytest_mock", 
+    "pytest_timeout",
+    "pytest_xdist"  # 병렬 테스트
+]
+
+# 테스트 마커 정의
+pytestmark = [
+    pytest.mark.vision_system,
+    pytest.mark.performance,
+    pytest.mark.integration
+]
+```
+
+### 테스트 자동화 및 CI/CD 통합
+```python
+# conftest.py - 테스트 설정
+import pytest
+import numpy as np
+from unittest.mock import Mock
+
+@pytest.fixture(scope="session")
+def test_config():
+    """테스트 설정"""
+    return {
+        'test_data_path': 'tests/data',
+        'model_path': 'tests/models/test_model.pt',
+        'benchmark_thresholds': {
+            'fps_min': 15.0,
+            'latency_max_ms': 100.0,
+            'accuracy_min': 0.85
+        }
+    }
+
+@pytest.fixture
+def mock_camera():
+    """가짜 카메라 픽스처"""
+    camera = Mock()
+    camera.get_frame.return_value = np.random.randint(
+        0, 255, (480, 640, 3), dtype=np.uint8
+    )
+    camera.is_connected.return_value = True
+    return camera
+
+# 성능 테스트용 벤치마크 설정
+BENCHMARK_CONFIG = {
+    'min_rounds': 10,
+    'max_time': 30.0,
+    'warmup_rounds': 3
+}
+
+# GitHub Actions 워크플로우 통합
+GITHUB_ACTIONS_CONFIG = """
+name: Vision System Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-cpu:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-benchmark pytest-timeout
+    - name: Run CPU tests
+      run: |
+        pytest tests/ -m "not gpu and not jetson" --benchmark-only
+    
+  test-gpu:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python with GPU
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    - name: Install GPU dependencies
+      run: |
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+        pip install -r requirements.txt
+    - name: Run GPU tests
+      run: |
+        pytest tests/ -m gpu --benchmark-only
+"""
+```
+
+

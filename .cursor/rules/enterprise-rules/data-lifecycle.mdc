@@ -1,0 +1,883 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 대용량 데이터 생명주기 관리 (ENTERPRISE)
+
+## 📊 데이터 레이크 아키텍처
+
+### 계층형 데이터 저장 전략
+```python
+# shared/data/data_lake_manager.py
+from enum import Enum
+from typing import Dict, List, Optional, Any
+import boto3
+import time
+from datetime import datetime, timedelta
+
+class DataTier(Enum):
+    """데이터 계층 정의"""
+    HOT = "hot"         # 실시간 접근 (SSD)
+    WARM = "warm"       # 빈번한 접근 (Standard Storage)
+    COLD = "cold"       # 가끔 접근 (Infrequent Access)
+    FROZEN = "frozen"   # 아카이브 (Glacier)
+
+class DataCategory(Enum):
+    """데이터 분류"""
+    RAW_VIDEO = "raw_video"
+    PROCESSED_FRAMES = "processed_frames"
+    MODEL_OUTPUTS = "model_outputs"
+    METADATA = "metadata"
+    LOGS = "logs"
+    MODELS = "models"
+    BACKUPS = "backups"
+
+class DataLakeManager:
+    """엔터프라이즈 데이터 레이크 관리"""
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.s3_client = boto3.client('s3')
+        self.glacier_client = boto3.client('glacier')
+        
+        # 계층별 저장 위치 정의
+        self.storage_tiers = {
+            DataTier.HOT: {
+                'storage_class': 'STANDARD',
+                'bucket': config['hot_bucket'],
+                'max_size_gb': 1000,  # 1TB
+                'retention_days': 7
+            },
+            DataTier.WARM: {
+                'storage_class': 'STANDARD_IA',
+                'bucket': config['warm_bucket'],
+                'max_size_gb': 5000,  # 5TB
+                'retention_days': 30
+            },
+            DataTier.COLD: {
+                'storage_class': 'GLACIER',
+                'bucket': config['cold_bucket'],
+                'max_size_gb': 50000,  # 50TB
+                'retention_days': 365
+            },
+            DataTier.FROZEN: {
+                'storage_class': 'DEEP_ARCHIVE',
+                'bucket': config['frozen_bucket'],
+                'max_size_gb': -1,    # 무제한
+                'retention_days': 2555  # 7년
+            }
+        }
+        
+        # 데이터 분류별 생명주기 정책
+        self.lifecycle_policies = {
+            DataCategory.RAW_VIDEO: {
+                'initial_tier': DataTier.HOT,
+                'transitions': [
+                    {'days': 1, 'tier': DataTier.WARM},
+                    {'days': 30, 'tier': DataTier.COLD},
+                    {'days': 365, 'tier': DataTier.FROZEN}
+                ]
+            },
+            DataCategory.PROCESSED_FRAMES: {
+                'initial_tier': DataTier.WARM,
+                'transitions': [
+                    {'days': 7, 'tier': DataTier.COLD},
+                    {'days': 90, 'tier': DataTier.FROZEN}
+                ]
+            },
+            DataCategory.MODEL_OUTPUTS: {
+                'initial_tier': DataTier.HOT,
+                'transitions': [
+                    {'days': 30, 'tier': DataTier.WARM},
+                    {'days': 365, 'tier': DataTier.COLD}
+                ]
+            },
+            DataCategory.METADATA: {
+                'initial_tier': DataTier.HOT,
+                'transitions': [
+                    {'days': 90, 'tier': DataTier.WARM}
+                ]
+            }
+        }
+    
+    def store_data(self, data_path: str, category: DataCategory, metadata: Dict) -> str:
+        """데이터 저장"""
+        policy = self.lifecycle_policies[category]
+        initial_tier = policy['initial_tier']
+        
+        # S3 키 생성 (파티셔닝 포함)
+        s3_key = self._generate_s3_key(data_path, category, metadata)
+        
+        # 초기 계층에 저장
+        bucket = self.storage_tiers[initial_tier]['bucket']
+        storage_class = self.storage_tiers[initial_tier]['storage_class']
+        
+        # 메타데이터 태그 추가
+        tags = {
+            'category': category.value,
+            'tier': initial_tier.value,
+            'created_date': datetime.now().isoformat(),
+            'domain': metadata.get('domain', 'unknown'),
+            'retention_policy': 'automatic'
+        }
+        
+        # S3 업로드
+        self.s3_client.upload_file(
+            data_path,
+            bucket,
+            s3_key,
+            ExtraArgs={
+                'StorageClass': storage_class,
+                'Tagging': self._format_tags(tags),
+                'Metadata': metadata
+            }
+        )
+        
+        # 생명주기 규칙 적용
+        self._apply_lifecycle_policy(bucket, s3_key, policy)
+        
+        return f"s3://{bucket}/{s3_key}"
+    
+    def _generate_s3_key(self, data_path: str, category: DataCategory, metadata: Dict) -> str:
+        """S3 키 생성 (파티셔닝)"""
+        now = datetime.now()
+        
+        # 파티셔닝 구조: category/year/month/day/domain/filename
+        partition = (
+            f"{category.value}/"
+            f"year={now.year}/"
+            f"month={now.month:02d}/"
+            f"day={now.day:02d}/"
+            f"domain={metadata.get('domain', 'unknown')}/"
+        )
+        
+        filename = os.path.basename(data_path)
+        return f"{partition}{filename}"
+    
+    def _apply_lifecycle_policy(self, bucket: str, s3_key: str, policy: Dict):
+        """생명주기 정책 적용"""
+        rules = []
+        
+        for transition in policy['transitions']:
+            rules.append({
+                'ID': f"transition_to_{transition['tier'].value}",
+                'Status': 'Enabled',
+                'Filter': {'Prefix': s3_key},
+                'Transitions': [{
+                    'Days': transition['days'],
+                    'StorageClass': self.storage_tiers[transition['tier']]['storage_class']
+                }]
+            })
+        
+        # 생명주기 구성 업데이트
+        self.s3_client.put_bucket_lifecycle_configuration(
+            Bucket=bucket,
+            LifecycleConfiguration={'Rules': rules}
+        )
+```
+
+## 🔄 자동 데이터 정리 시스템
+
+### 지능형 데이터 정리
+```python
+# shared/data/cleanup_manager.py
+class IntelligentDataCleanup:
+    """지능형 데이터 정리 시스템"""
+    
+    def __init__(self):
+        self.cleanup_policies = self._load_cleanup_policies()
+        self.usage_analyzer = DataUsageAnalyzer()
+        
+    def _load_cleanup_policies(self) -> Dict:
+        """정리 정책 로드"""
+        return {
+            'raw_video': {
+                'max_age_days': 7,
+                'max_size_gb': 500,
+                'keep_if_referenced': True,
+                'compression_enabled': True
+            },
+            'processed_frames': {
+                'max_age_days': 30,
+                'max_size_gb': 200,
+                'keep_if_recent_access': True,
+                'deduplication_enabled': True
+            },
+            'temp_files': {
+                'max_age_hours': 24,
+                'max_size_gb': 50,
+                'aggressive_cleanup': True
+            },
+            'logs': {
+                'max_age_days': 90,
+                'max_size_gb': 20,
+                'compression_enabled': True,
+                'rotate_when_full': True
+            },
+            'model_outputs': {
+                'max_age_days': 180,
+                'max_size_gb': 100,
+                'keep_important_samples': True,
+                'archive_before_delete': True
+            }
+        }
+    
+    def run_cleanup(self, dry_run: bool = True) -> Dict:
+        """데이터 정리 실행"""
+        cleanup_report = {
+            'start_time': datetime.now().isoformat(),
+            'actions': [],
+            'space_freed_gb': 0,
+            'files_processed': 0,
+            'errors': []
+        }
+        
+        for data_type, policy in self.cleanup_policies.items():
+            try:
+                type_report = self._cleanup_data_type(data_type, policy, dry_run)
+                cleanup_report['actions'].append(type_report)
+                cleanup_report['space_freed_gb'] += type_report['space_freed_gb']
+                cleanup_report['files_processed'] += type_report['files_count']
+                
+            except Exception as e:
+                error_info = {
+                    'data_type': data_type,
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                }
+                cleanup_report['errors'].append(error_info)
+                logger.error(f"Cleanup failed for {data_type}: {str(e)}")
+        
+        cleanup_report['end_time'] = datetime.now().isoformat()
+        self._save_cleanup_report(cleanup_report)
+        
+        return cleanup_report
+    
+    def _cleanup_data_type(self, data_type: str, policy: Dict, dry_run: bool) -> Dict:
+        """특정 데이터 타입 정리"""
+        base_path = f"data/{data_type}"
+        
+        if not os.path.exists(base_path):
+            return {'data_type': data_type, 'files_count': 0, 'space_freed_gb': 0}
+        
+        candidates = self._find_cleanup_candidates(base_path, policy)
+        
+        # 사용 패턴 분석
+        usage_data = self.usage_analyzer.analyze_usage(candidates)
+        
+        # 정리 대상 필터링
+        files_to_cleanup = self._filter_by_importance(candidates, usage_data, policy)
+        
+        files_count = len(files_to_cleanup)
+        space_freed = 0
+        
+        if not dry_run:
+            space_freed = self._execute_cleanup(files_to_cleanup, policy)
+        else:
+            space_freed = sum(os.path.getsize(f) for f in files_to_cleanup) / (1024**3)
+        
+        return {
+            'data_type': data_type,
+            'files_count': files_count,
+            'space_freed_gb': space_freed,
+            'dry_run': dry_run
+        }
+    
+    def _execute_cleanup(self, files_to_cleanup: List[str], policy: Dict) -> float:
+        """실제 정리 실행"""
+        total_size = 0
+        
+        for file_path in files_to_cleanup:
+            try:
+                file_size = os.path.getsize(file_path)
+                
+                # 아카이빙 필요 시
+                if policy.get('archive_before_delete'):
+                    self._archive_file(file_path)
+                
+                # 압축 필요 시
+                if policy.get('compression_enabled'):
+                    compressed_path = self._compress_file(file_path)
+                    if compressed_path:
+                        os.remove(file_path)
+                        continue
+                
+                # 파일 삭제
+                os.remove(file_path)
+                total_size += file_size
+                
+            except Exception as e:
+                logger.error(f"Failed to cleanup {file_path}: {str(e)}")
+        
+        return total_size / (1024**3)  # GB 단위로 반환
+
+class DataUsageAnalyzer:
+    """데이터 사용 패턴 분석기"""
+    
+    def analyze_usage(self, file_paths: List[str]) -> Dict:
+        """사용 패턴 분석"""
+        usage_data = {}
+        
+        for file_path in file_paths:
+            # 파일 접근 로그 분석
+            access_count = self._get_access_count(file_path)
+            last_access = self._get_last_access_time(file_path)
+            references = self._find_references(file_path)
+            
+            usage_data[file_path] = {
+                'access_count': access_count,
+                'last_access': last_access,
+                'referenced': len(references) > 0,
+                'recent_access': self._is_recent_access(last_access),
+                'importance_score': self._calculate_importance(access_count, last_access, references)
+            }
+        
+        return usage_data
+    
+    def _calculate_importance(self, access_count: int, last_access: float, references: List) -> float:
+        """중요도 점수 계산"""
+        # 접근 빈도 (40%)
+        access_score = min(access_count / 10, 1.0) * 0.4
+        
+        # 최근성 (30%)
+        days_since_access = (time.time() - last_access) / (24 * 3600)
+        recency_score = max(0, 1 - days_since_access / 30) * 0.3
+        
+        # 참조 여부 (30%)
+        reference_score = 1.0 if references else 0.0
+        reference_score *= 0.3
+        
+        return access_score + recency_score + reference_score
+```
+
+## 📈 데이터 품질 모니터링
+
+### 실시간 데이터 품질 감시
+```python
+# shared/data/quality_monitor.py
+class DataQualityMonitor:
+    """데이터 품질 실시간 모니터링"""
+    
+    def __init__(self):
+        self.quality_metrics = {
+            'completeness': 0.0,    # 완전성
+            'accuracy': 0.0,        # 정확성
+            'consistency': 0.0,     # 일관성
+            'timeliness': 0.0,      # 적시성
+            'validity': 0.0         # 유효성
+        }
+        
+        self.quality_rules = self._load_quality_rules()
+        self.alert_thresholds = {
+            'completeness': 0.95,
+            'accuracy': 0.90,
+            'consistency': 0.85,
+            'timeliness': 0.80,
+            'validity': 0.95
+        }
+    
+    def _load_quality_rules(self) -> Dict:
+        """품질 검증 규칙 로드"""
+        return {
+            'image_data': {
+                'required_fields': ['timestamp', 'camera_id', 'resolution', 'format'],
+                'format_validation': {
+                    'timestamp': r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}',
+                    'camera_id': r'cam_\d{3}',
+                    'resolution': r'\d+x\d+',
+                    'format': ['jpg', 'png', 'bmp']
+                },
+                'value_ranges': {
+                    'file_size_mb': {'min': 0.1, 'max': 50.0},
+                    'processing_time_ms': {'min': 1, 'max': 5000}
+                }
+            },
+            'detection_results': {
+                'required_fields': ['bbox', 'confidence', 'class_name'],
+                'format_validation': {
+                    'bbox': r'\[\d+,\s*\d+,\s*\d+,\s*\d+\]',
+                    'confidence': r'0?\.\d+',
+                    'class_name': ['face', 'person', 'object']
+                },
+                'value_ranges': {
+                    'confidence': {'min': 0.0, 'max': 1.0},
+                    'bbox_area': {'min': 100, 'max': 1000000}
+                }
+            }
+        }
+    
+    def validate_data_batch(self, data_batch: List[Dict], data_type: str) -> Dict:
+        """데이터 배치 품질 검증"""
+        if data_type not in self.quality_rules:
+            return {'error': f'Unknown data type: {data_type}'}
+        
+        rules = self.quality_rules[data_type]
+        validation_results = {
+            'total_records': len(data_batch),
+            'valid_records': 0,
+            'completeness_score': 0.0,
+            'accuracy_score': 0.0,
+            'consistency_score': 0.0,
+            'validation_errors': [],
+            'quality_summary': {}
+        }
+        
+        valid_count = 0
+        completeness_scores = []
+        accuracy_scores = []
+        
+        for i, record in enumerate(data_batch):
+            record_validation = self._validate_single_record(record, rules)
+            
+            if record_validation['is_valid']:
+                valid_count += 1
+            
+            completeness_scores.append(record_validation['completeness'])
+            accuracy_scores.append(record_validation['accuracy'])
+            
+            if record_validation['errors']:
+                validation_results['validation_errors'].extend([
+                    f"Record {i}: {error}" for error in record_validation['errors']
+                ])
+        
+        # 품질 점수 계산
+        validation_results['valid_records'] = valid_count
+        validation_results['completeness_score'] = sum(completeness_scores) / len(completeness_scores)
+        validation_results['accuracy_score'] = sum(accuracy_scores) / len(accuracy_scores)
+        validation_results['consistency_score'] = self._calculate_consistency(data_batch)
+        
+        # 품질 요약
+        validation_results['quality_summary'] = {
+            'validity_rate': valid_count / len(data_batch),
+            'completeness': validation_results['completeness_score'],
+            'accuracy': validation_results['accuracy_score'],
+            'consistency': validation_results['consistency_score']
+        }
+        
+        # 알림 확인
+        self._check_quality_alerts(validation_results['quality_summary'])
+        
+        return validation_results
+    
+    def _validate_single_record(self, record: Dict, rules: Dict) -> Dict:
+        """단일 레코드 검증"""
+        errors = []
+        required_fields = rules.get('required_fields', [])
+        format_rules = rules.get('format_validation', {})
+        value_ranges = rules.get('value_ranges', {})
+        
+        # 완전성 검사
+        missing_fields = [field for field in required_fields if field not in record]
+        completeness = 1.0 - (len(missing_fields) / len(required_fields))
+        
+        if missing_fields:
+            errors.append(f"Missing required fields: {missing_fields}")
+        
+        # 형식 검증
+        accuracy = 1.0
+        for field, pattern in format_rules.items():
+            if field in record:
+                if isinstance(pattern, str):  # 정규식
+                    import re
+                    if not re.match(pattern, str(record[field])):
+                        errors.append(f"Invalid format for {field}: {record[field]}")
+                        accuracy -= 0.1
+                elif isinstance(pattern, list):  # 허용 값 목록
+                    if record[field] not in pattern:
+                        errors.append(f"Invalid value for {field}: {record[field]}")
+                        accuracy -= 0.1
+        
+        # 값 범위 검증
+        for field, range_rule in value_ranges.items():
+            if field in record:
+                value = record[field]
+                if 'min' in range_rule and value < range_rule['min']:
+                    errors.append(f"{field} below minimum: {value} < {range_rule['min']}")
+                    accuracy -= 0.1
+                if 'max' in range_rule and value > range_rule['max']:
+                    errors.append(f"{field} above maximum: {value} > {range_rule['max']}")
+                    accuracy -= 0.1
+        
+        return {
+            'is_valid': len(errors) == 0,
+            'completeness': max(0, completeness),
+            'accuracy': max(0, accuracy),
+            'errors': errors
+        }
+    
+    def _calculate_consistency(self, data_batch: List[Dict]) -> float:
+        """데이터 일관성 계산"""
+        if len(data_batch) < 2:
+            return 1.0
+        
+        consistency_score = 1.0
+        
+        # 형식 일관성 검사
+        first_record_keys = set(data_batch[0].keys())
+        for record in data_batch[1:]:
+            if set(record.keys()) != first_record_keys:
+                consistency_score -= 0.1
+        
+        # 값 범위 일관성 검사 (이상치 탐지)
+        numeric_fields = []
+        for key in first_record_keys:
+            if all(isinstance(record.get(key), (int, float)) for record in data_batch):
+                numeric_fields.append(key)
+        
+        for field in numeric_fields:
+            values = [record[field] for record in data_batch if field in record]
+            if len(values) > 1:
+                outliers = self._detect_outliers(values)
+                consistency_score -= len(outliers) * 0.05
+        
+        return max(0, consistency_score)
+    
+    def _detect_outliers(self, values: List[float]) -> List[int]:
+        """이상치 탐지 (IQR 방법)"""
+        import numpy as np
+        
+        q1 = np.percentile(values, 25)
+        q3 = np.percentile(values, 75)
+        iqr = q3 - q1
+        
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+        
+        outliers = []
+        for i, value in enumerate(values):
+            if value < lower_bound or value > upper_bound:
+                outliers.append(i)
+        
+        return outliers
+
+# 데이터 카탈로그
+class DataCatalog:
+    """데이터 카탈로그 관리"""
+    
+    def __init__(self):
+        self.catalog_db = {}  # 실제로는 데이터베이스 사용
+        
+    def register_dataset(self, dataset_info: Dict) -> str:
+        """데이터셋 등록"""
+        dataset_id = f"ds_{int(time.time())}"
+        
+        catalog_entry = {
+            'id': dataset_id,
+            'name': dataset_info['name'],
+            'description': dataset_info.get('description', ''),
+            'location': dataset_info['location'],
+            'schema': dataset_info.get('schema', {}),
+            'size_bytes': dataset_info.get('size_bytes', 0),
+            'record_count': dataset_info.get('record_count', 0),
+            'created_date': datetime.now().isoformat(),
+            'last_updated': datetime.now().isoformat(),
+            'access_permissions': dataset_info.get('access_permissions', ['read']),
+            'quality_score': dataset_info.get('quality_score', 0.0),
+            'tags': dataset_info.get('tags', []),
+            'lineage': dataset_info.get('lineage', {}),
+            'retention_policy': dataset_info.get('retention_policy', 'default')
+        }
+        
+        self.catalog_db[dataset_id] = catalog_entry
+        return dataset_id
+    
+    def search_datasets(self, query: str, filters: Dict = None) -> List[Dict]:
+        """데이터셋 검색"""
+        results = []
+        
+        for dataset_id, dataset in self.catalog_db.items():
+            # 텍스트 검색
+            if query.lower() in dataset['name'].lower() or query.lower() in dataset['description'].lower():
+                if self._matches_filters(dataset, filters or {}):
+                    results.append(dataset)
+        
+        return results
+    
+    def _matches_filters(self, dataset: Dict, filters: Dict) -> bool:
+        """필터 조건 확인"""
+        for key, value in filters.items():
+            if key not in dataset:
+                return False
+            
+            if isinstance(value, list):
+                if dataset[key] not in value:
+                    return False
+            else:
+                if dataset[key] != value:
+                    return False
+        
+        return True
+```
+
+## 🗄️ 백업 및 복원 시스템
+
+### 자동화된 백업 전략
+```python
+# shared/data/backup_manager.py
+class EnterpriseBackupManager:
+    """엔터프라이즈 백업 관리"""
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.backup_strategies = {
+            'critical': {
+                'frequency': 'hourly',
+                'retention_days': 365,
+                'replication_zones': 3,
+                'encryption': True,
+                'compression': True
+            },
+            'important': {
+                'frequency': 'daily',
+                'retention_days': 90,
+                'replication_zones': 2,
+                'encryption': True,
+                'compression': True
+            },
+            'standard': {
+                'frequency': 'weekly',
+                'retention_days': 30,
+                'replication_zones': 1,
+                'encryption': False,
+                'compression': True
+            }
+        }
+    
+    def schedule_backup(self, data_path: str, backup_level: str = 'standard'):
+        """백업 스케줄링"""
+        if backup_level not in self.backup_strategies:
+            raise ValueError(f"Unknown backup level: {backup_level}")
+        
+        strategy = self.backup_strategies[backup_level]
+        
+        # Celery 스케줄러를 사용한 주기적 백업
+        from celery import Celery
+        
+        @Celery.task
+        def execute_backup():
+            backup_id = self._create_backup(data_path, strategy)
+            return backup_id
+        
+        # 주기에 따른 스케줄링
+        if strategy['frequency'] == 'hourly':
+            execute_backup.apply_async(countdown=3600)  # 1시간
+        elif strategy['frequency'] == 'daily':
+            execute_backup.apply_async(countdown=86400)  # 24시간
+        elif strategy['frequency'] == 'weekly':
+            execute_backup.apply_async(countdown=604800)  # 7일
+    
+    def _create_backup(self, data_path: str, strategy: Dict) -> str:
+        """백업 생성"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_id = f"backup_{timestamp}_{hash(data_path)}"
+        
+        # 백업 파일 생성
+        backup_path = f"backups/{backup_id}"
+        
+        if strategy['compression']:
+            backup_path += ".tar.gz"
+            self._create_compressed_backup(data_path, backup_path)
+        else:
+            self._create_simple_backup(data_path, backup_path)
+        
+        # 암호화
+        if strategy['encryption']:
+            encrypted_path = self._encrypt_backup(backup_path)
+            os.remove(backup_path)
+            backup_path = encrypted_path
+        
+        # 복제본 생성
+        for zone in range(strategy['replication_zones']):
+            replica_path = f"{backup_path}.replica_{zone}"
+            shutil.copy2(backup_path, replica_path)
+        
+        # 백업 메타데이터 저장
+        self._save_backup_metadata(backup_id, {
+            'original_path': data_path,
+            'backup_path': backup_path,
+            'strategy': strategy,
+            'created_at': datetime.now().isoformat(),
+            'size_bytes': os.path.getsize(backup_path)
+        })
+        
+        return backup_id
+    
+    def restore_backup(self, backup_id: str, restore_path: str) -> bool:
+        """백업 복원"""
+        try:
+            metadata = self._get_backup_metadata(backup_id)
+            backup_path = metadata['backup_path']
+            
+            # 복호화
+            if backup_path.endswith('.encrypted'):
+                decrypted_path = self._decrypt_backup(backup_path)
+                backup_path = decrypted_path
+            
+            # 압축 해제
+            if backup_path.endswith('.tar.gz'):
+                self._extract_compressed_backup(backup_path, restore_path)
+            else:
+                shutil.copy2(backup_path, restore_path)
+            
+            logger.info(f"Backup {backup_id} restored to {restore_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to restore backup {backup_id}: {str(e)}")
+            return False
+    
+    def cleanup_old_backups(self):
+        """오래된 백업 정리"""
+        for backup_id, metadata in self._list_all_backups().items():
+            created_at = datetime.fromisoformat(metadata['created_at'])
+            retention_days = metadata['strategy']['retention_days']
+            
+            if datetime.now() - created_at > timedelta(days=retention_days):
+                self._delete_backup(backup_id)
+                logger.info(f"Cleaned up expired backup: {backup_id}")
+```
+
+## 📋 데이터 거버넌스
+
+### 데이터 거버넌스 프레임워크
+```python
+# shared/data/governance.py
+class DataGovernanceFramework:
+    """데이터 거버넌스 프레임워크"""
+    
+    def __init__(self):
+        self.policies = self._load_governance_policies()
+        self.compliance_rules = self._load_compliance_rules()
+        
+    def _load_governance_policies(self) -> Dict:
+        """거버넌스 정책 로드"""
+        return {
+            'data_classification': {
+                'public': {'access_level': 'open', 'encryption': False},
+                'internal': {'access_level': 'company', 'encryption': True},
+                'confidential': {'access_level': 'authorized', 'encryption': True},
+                'restricted': {'access_level': 'minimum', 'encryption': True}
+            },
+            'retention_policies': {
+                'personal_data': {'max_retention_days': 1095},  # 3년
+                'business_data': {'max_retention_days': 2555},  # 7년
+                'system_logs': {'max_retention_days': 365},     # 1년
+                'temp_data': {'max_retention_hours': 24}        # 24시간
+            },
+            'access_controls': {
+                'role_based': True,
+                'time_based': True,
+                'location_based': False,
+                'approval_required': ['confidential', 'restricted']
+            }
+        }
+    
+    def _load_compliance_rules(self) -> Dict:
+        """컴플라이언스 규칙 로드"""
+        return {
+            'gdpr': {
+                'personal_data_consent': True,
+                'right_to_be_forgotten': True,
+                'data_portability': True,
+                'breach_notification_hours': 72
+            },
+            'ccpa': {
+                'consumer_rights': True,
+                'opt_out_sale': True,
+                'data_disclosure': True
+            },
+            'sox': {
+                'financial_data_controls': True,
+                'audit_trail': True,
+                'segregation_of_duties': True
+            }
+        }
+    
+    def validate_data_access(self, user_id: str, data_classification: str, operation: str) -> bool:
+        """데이터 접근 검증"""
+        user_permissions = self._get_user_permissions(user_id)
+        classification_policy = self.policies['data_classification'][data_classification]
+        
+        # 접근 레벨 확인
+        if not self._check_access_level(user_permissions, classification_policy['access_level']):
+            return False
+        
+        # 시간 기반 제약 확인
+        if self.policies['access_controls']['time_based']:
+            if not self._check_time_restrictions(user_id):
+                return False
+        
+        # 승인 필요 확인
+        if data_classification in self.policies['access_controls']['approval_required']:
+            if not self._check_approval_status(user_id, data_classification, operation):
+                return False
+        
+        # 감사 로그 기록
+        self._log_data_access(user_id, data_classification, operation)
+        
+        return True
+    
+    def enforce_retention_policy(self, data_path: str, data_type: str):
+        """보존 정책 강제 적용"""
+        if data_type not in self.policies['retention_policies']:
+            logger.warning(f"No retention policy for data type: {data_type}")
+            return
+        
+        policy = self.policies['retention_policies'][data_type]
+        
+        # 파일 생성 시간 확인
+        creation_time = os.path.getctime(data_path)
+        current_time = time.time()
+        
+        if 'max_retention_days' in policy:
+            max_age = policy['max_retention_days'] * 24 * 3600
+            if current_time - creation_time > max_age:
+                self._schedule_data_deletion(data_path, 'retention_policy_expired')
+        
+        elif 'max_retention_hours' in policy:
+            max_age = policy['max_retention_hours'] * 3600
+            if current_time - creation_time > max_age:
+                self._schedule_data_deletion(data_path, 'retention_policy_expired')
+    
+    def generate_compliance_report(self, compliance_type: str) -> Dict:
+        """컴플라이언스 리포트 생성"""
+        if compliance_type not in self.compliance_rules:
+            raise ValueError(f"Unknown compliance type: {compliance_type}")
+        
+        rules = self.compliance_rules[compliance_type]
+        report = {
+            'compliance_type': compliance_type,
+            'generated_at': datetime.now().isoformat(),
+            'compliance_status': {},
+            'violations': [],
+            'recommendations': []
+        }
+        
+        # 규칙별 준수 상태 확인
+        for rule_name, required in rules.items():
+            if required:
+                status = self._check_rule_compliance(rule_name)
+                report['compliance_status'][rule_name] = status
+                
+                if not status['compliant']:
+                    report['violations'].append({
+                        'rule': rule_name,
+                        'description': status['description'],
+                        'severity': status['severity']
+                    })
+        
+        # 개선 권고사항 생성
+        report['recommendations'] = self._generate_recommendations(report['violations'])
+        
+        return report
+```
+
+
+---
+
+**적용 시점**: 일일 데이터 1TB 이상 처리 시 또는 장기 데이터 보관이 필요할 때
+**의존성**: `pip install boto3 celery numpy pandas`
+**설정**: AWS S3, Glacier, 데이터베이스, 스케줄러 설정 필요
+
+

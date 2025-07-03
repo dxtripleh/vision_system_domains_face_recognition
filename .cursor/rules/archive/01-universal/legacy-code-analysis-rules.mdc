@@ -1,0 +1,766 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 레거시 코드 분석 규칙 (Legacy Code Analysis Rules)
+
+이 규칙은 기존 코드베이스 분석, 리팩토링 전략, 마이그레이션 계획에 관한 범용 표준입니다.
+
+## 🔍 레거시 코드 분석 프레임워크
+
+### 분석 단계별 접근법
+```python
+LEGACY_ANALYSIS_PHASES = {
+    'Phase 1': {
+        'name': 'Discovery & Inventory',
+        'description': '코드베이스 전체 현황 파악',
+        'activities': [
+            'file_structure_analysis',
+            'dependency_mapping',
+            'code_metrics_collection',
+            'documentation_audit'
+        ],
+        'deliverables': ['inventory_report', 'dependency_graph', 'metrics_dashboard']
+    },
+    'Phase 2': {
+        'name': 'Quality Assessment',
+        'description': '코드 품질 및 기술 부채 평가',
+        'activities': [
+            'code_quality_analysis',
+            'security_vulnerability_scan',
+            'performance_bottleneck_identification',
+            'maintainability_assessment'
+        ],
+        'deliverables': ['quality_report', 'risk_assessment', 'refactoring_priorities']
+    },
+    'Phase 3': {
+        'name': 'Migration Planning',
+        'description': '마이그레이션 전략 수립',
+        'activities': [
+            'migration_strategy_design',
+            'risk_mitigation_planning',
+            'timeline_estimation',
+            'resource_allocation'
+        ],
+        'deliverables': ['migration_plan', 'risk_register', 'timeline_roadmap']
+    },
+    'Phase 4': {
+        'name': 'Execution & Validation',
+        'description': '실제 마이그레이션 실행',
+        'activities': [
+            'incremental_refactoring',
+            'testing_validation',
+            'performance_monitoring',
+            'rollback_preparation'
+        ],
+        'deliverables': ['refactored_code', 'test_results', 'performance_reports']
+    }
+}
+```
+
+## 📊 코드 메트릭 수집 시스템
+
+### 복잡도 분석 도구
+```python
+import ast
+import os
+from pathlib import Path
+from typing import Dict, List, Tuple
+import radon.complexity as radon_cc
+import radon.metrics as radon_metrics
+
+class CodeComplexityAnalyzer:
+    """코드 복잡도 분석기"""
+    
+    def __init__(self, project_root: str):
+        self.project_root = Path(project_root)
+        self.complexity_thresholds = {
+            'low': 5,
+            'moderate': 10,
+            'high': 15,
+            'very_high': 20
+        }
+    
+    def analyze_project(self) -> Dict:
+        """프로젝트 전체 복잡도 분석"""
+        results = {
+            'files': {},
+            'summary': {
+                'total_files': 0,
+                'total_functions': 0,
+                'average_complexity': 0,
+                'high_complexity_functions': []
+            }
+        }
+        
+        total_complexity = 0
+        total_functions = 0
+        
+        for py_file in self.project_root.rglob('*.py'):
+            if self._should_skip_file(py_file):
+                continue
+                
+            file_analysis = self._analyze_file(py_file)
+            results['files'][str(py_file)] = file_analysis
+            
+            total_complexity += file_analysis['total_complexity']
+            total_functions += file_analysis['function_count']
+            
+            # 고복잡도 함수 수집
+            for func in file_analysis['functions']:
+                if func['complexity'] >= self.complexity_thresholds['high']:
+                    results['summary']['high_complexity_functions'].append({
+                        'file': str(py_file),
+                        'function': func['name'],
+                        'complexity': func['complexity']
+                    })
+        
+        results['summary']['total_files'] = len(results['files'])
+        results['summary']['total_functions'] = total_functions
+        results['summary']['average_complexity'] = (
+            total_complexity / total_functions if total_functions > 0 else 0
+        )
+        
+        return results
+    
+    def _analyze_file(self, file_path: Path) -> Dict:
+        """개별 파일 분석"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Radon을 사용한 복잡도 분석
+            cc_results = radon_cc.cc_visit(content)
+            
+            functions = []
+            total_complexity = 0
+            
+            for result in cc_results:
+                complexity = result.complexity
+                functions.append({
+                    'name': result.name,
+                    'complexity': complexity,
+                    'type': result.classname if hasattr(result, 'classname') else 'function',
+                    'line_number': result.lineno,
+                    'risk_level': self._get_risk_level(complexity)
+                })
+                total_complexity += complexity
+            
+            return {
+                'functions': functions,
+                'function_count': len(functions),
+                'total_complexity': total_complexity,
+                'average_complexity': total_complexity / len(functions) if functions else 0,
+                'file_size': file_path.stat().st_size,
+                'line_count': len(content.splitlines())
+            }
+            
+        except Exception as e:
+            return {
+                'error': str(e),
+                'functions': [],
+                'function_count': 0,
+                'total_complexity': 0,
+                'average_complexity': 0
+            }
+    
+    def _get_risk_level(self, complexity: int) -> str:
+        """복잡도에 따른 위험도 분류"""
+        if complexity <= self.complexity_thresholds['low']:
+            return 'low'
+        elif complexity <= self.complexity_thresholds['moderate']:
+            return 'moderate'
+        elif complexity <= self.complexity_thresholds['high']:
+            return 'high'
+        else:
+            return 'very_high'
+    
+    def _should_skip_file(self, file_path: Path) -> bool:
+        """분석에서 제외할 파일 판단"""
+        skip_patterns = [
+            '__pycache__',
+            '.git',
+            'node_modules',
+            'venv',
+            'env',
+            '.pytest_cache'
+        ]
+        
+        return any(pattern in str(file_path) for pattern in skip_patterns)
+```
+
+### 중복 코드 감지 시스템
+```python
+import hashlib
+from collections import defaultdict
+
+class CodeDuplicationDetector:
+    """코드 중복 감지기"""
+    
+    def __init__(self, project_root: str, min_lines: int = 5):
+        self.project_root = Path(project_root)
+        self.min_lines = min_lines
+        
+    def detect_duplications(self) -> Dict:
+        """프로젝트 내 중복 코드 감지"""
+        code_blocks = self._extract_code_blocks()
+        duplications = self._find_duplicates(code_blocks)
+        
+        return {
+            'total_duplications': len(duplications),
+            'duplications': duplications,
+            'summary': self._generate_summary(duplications)
+        }
+    
+    def _extract_code_blocks(self) -> List[Dict]:
+        """코드 블록 추출"""
+        code_blocks = []
+        
+        for py_file in self.project_root.rglob('*.py'):
+            if self._should_skip_file(py_file):
+                continue
+                
+            try:
+                with open(py_file, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                # 최소 라인 수 이상의 코드 블록 추출
+                for i in range(len(lines) - self.min_lines + 1):
+                    block = lines[i:i + self.min_lines]
+                    normalized_block = self._normalize_code_block(block)
+                    
+                    if self._is_meaningful_block(normalized_block):
+                        code_blocks.append({
+                            'file': str(py_file),
+                            'start_line': i + 1,
+                            'end_line': i + self.min_lines,
+                            'content': normalized_block,
+                            'hash': self._calculate_hash(normalized_block)
+                        })
+                        
+            except Exception:
+                continue
+        
+        return code_blocks
+    
+    def _normalize_code_block(self, lines: List[str]) -> str:
+        """코드 블록 정규화 (공백, 주석 제거)"""
+        normalized_lines = []
+        
+        for line in lines:
+            # 공백 제거
+            stripped = line.strip()
+            
+            # 빈 줄과 주석 제외
+            if stripped and not stripped.startswith('#'):
+                # 변수명을 일반화 (선택적)
+                # 더 정교한 정규화가 필요한 경우 AST 사용
+                normalized_lines.append(stripped)
+        
+        return '\n'.join(normalized_lines)
+    
+    def _is_meaningful_block(self, block: str) -> bool:
+        """의미있는 코드 블록인지 판단"""
+        # 너무 짧거나 단순한 블록 제외
+        if len(block.strip()) < 50:  # 50자 미만
+            return False
+            
+        # import 문만 있는 블록 제외
+        lines = block.strip().split('\n')
+        if all(line.startswith(('import ', 'from ')) for line in lines):
+            return False
+            
+        return True
+    
+    def _calculate_hash(self, content: str) -> str:
+        """코드 블록 해시 계산"""
+        return hashlib.md5(content.encode('utf-8')).hexdigest()
+    
+    def _find_duplicates(self, code_blocks: List[Dict]) -> List[Dict]:
+        """중복 코드 찾기"""
+        hash_groups = defaultdict(list)
+        
+        # 해시별로 그룹화
+        for block in code_blocks:
+            hash_groups[block['hash']].append(block)
+        
+        # 중복된 그룹만 추출
+        duplications = []
+        for hash_value, blocks in hash_groups.items():
+            if len(blocks) > 1:
+                duplications.append({
+                    'hash': hash_value,
+                    'instances': blocks,
+                    'count': len(blocks),
+                    'content_preview': blocks[0]['content'][:200] + '...'
+                })
+        
+        return sorted(duplications, key=lambda x: x['count'], reverse=True)
+    
+    def _generate_summary(self, duplications: List[Dict]) -> Dict:
+        """중복 코드 요약 생성"""
+        total_instances = sum(dup['count'] for dup in duplications)
+        affected_files = set()
+        
+        for dup in duplications:
+            for instance in dup['instances']:
+                affected_files.add(instance['file'])
+        
+        return {
+            'total_duplicate_instances': total_instances,
+            'unique_duplicate_blocks': len(duplications),
+            'affected_files': len(affected_files),
+            'top_duplications': duplications[:5]  # 상위 5개
+        }
+    
+    def _should_skip_file(self, file_path: Path) -> bool:
+        """분석에서 제외할 파일 판단"""
+        skip_patterns = ['__pycache__', '.git', 'test_', '__init__.py']
+        return any(pattern in str(file_path) for pattern in skip_patterns)
+```
+
+## 🔄 리팩토링 전략 수립
+
+### 우선순위 기반 리팩토링 계획
+```python
+class RefactoringPrioritizer:
+    """리팩토링 우선순위 결정기"""
+    
+    def __init__(self):
+        self.criteria_weights = {
+            'complexity': 0.25,      # 복잡도
+            'duplication': 0.20,     # 중복도
+            'coupling': 0.15,        # 결합도
+            'size': 0.15,           # 크기
+            'change_frequency': 0.15, # 변경 빈도
+            'bug_density': 0.10      # 버그 밀도
+        }
+    
+    def prioritize_files(self, analysis_results: Dict) -> List[Dict]:
+        """파일별 리팩토링 우선순위 계산"""
+        file_scores = []
+        
+        for file_path, metrics in analysis_results.items():
+            score = self._calculate_priority_score(metrics)
+            
+            file_scores.append({
+                'file': file_path,
+                'priority_score': score,
+                'metrics': metrics,
+                'recommendations': self._generate_recommendations(metrics)
+            })
+        
+        return sorted(file_scores, key=lambda x: x['priority_score'], reverse=True)
+    
+    def _calculate_priority_score(self, metrics: Dict) -> float:
+        """우선순위 점수 계산"""
+        score = 0
+        
+        # 복잡도 점수 (높을수록 높은 점수)
+        complexity_score = min(metrics.get('average_complexity', 0) / 20, 1.0)
+        score += complexity_score * self.criteria_weights['complexity']
+        
+        # 중복도 점수
+        duplication_score = min(metrics.get('duplication_count', 0) / 5, 1.0)
+        score += duplication_score * self.criteria_weights['duplication']
+        
+        # 크기 점수 (라인 수 기준)
+        size_score = min(metrics.get('line_count', 0) / 1000, 1.0)
+        score += size_score * self.criteria_weights['size']
+        
+        # 결합도 점수 (import 수 기준)
+        coupling_score = min(metrics.get('import_count', 0) / 20, 1.0)
+        score += coupling_score * self.criteria_weights['coupling']
+        
+        return score
+    
+    def _generate_recommendations(self, metrics: Dict) -> List[str]:
+        """리팩토링 권장사항 생성"""
+        recommendations = []
+        
+        if metrics.get('average_complexity', 0) > 15:
+            recommendations.append('함수 분해를 통한 복잡도 감소')
+        
+        if metrics.get('line_count', 0) > 500:
+            recommendations.append('파일 분할 고려')
+        
+        if metrics.get('duplication_count', 0) > 3:
+            recommendations.append('중복 코드 제거 및 공통 함수 추출')
+        
+        if metrics.get('import_count', 0) > 15:
+            recommendations.append('의존성 정리 및 인터페이스 단순화')
+        
+        return recommendations
+```
+
+## 📋 마이그레이션 계획 수립
+
+### 단계별 마이그레이션 전략
+```python
+class MigrationPlanner:
+    """마이그레이션 계획 수립기"""
+    
+    def __init__(self):
+        self.migration_strategies = {
+            'strangler_fig': {
+                'description': '점진적 대체 전략',
+                'suitable_for': ['large_monoliths', 'critical_systems'],
+                'risk_level': 'low',
+                'timeline': 'long'
+            },
+            'big_bang': {
+                'description': '전면 교체 전략',
+                'suitable_for': ['small_systems', 'non_critical'],
+                'risk_level': 'high',
+                'timeline': 'short'
+            },
+            'parallel_run': {
+                'description': '병렬 실행 전략',
+                'suitable_for': ['data_processing', 'batch_systems'],
+                'risk_level': 'medium',
+                'timeline': 'medium'
+            }
+        }
+    
+    def create_migration_plan(self, analysis_results: Dict) -> Dict:
+        """마이그레이션 계획 생성"""
+        system_characteristics = self._analyze_system_characteristics(analysis_results)
+        recommended_strategy = self._recommend_strategy(system_characteristics)
+        
+        plan = {
+            'strategy': recommended_strategy,
+            'phases': self._create_migration_phases(analysis_results, recommended_strategy),
+            'risk_assessment': self._assess_risks(analysis_results),
+            'timeline': self._estimate_timeline(analysis_results),
+            'resource_requirements': self._estimate_resources(analysis_results)
+        }
+        
+        return plan
+    
+    def _analyze_system_characteristics(self, analysis_results: Dict) -> Dict:
+        """시스템 특성 분석"""
+        total_files = len(analysis_results)
+        total_lines = sum(metrics.get('line_count', 0) for metrics in analysis_results.values())
+        avg_complexity = sum(metrics.get('average_complexity', 0) for metrics in analysis_results.values()) / total_files
+        
+        return {
+            'size': 'large' if total_lines > 10000 else 'medium' if total_lines > 5000 else 'small',
+            'complexity': 'high' if avg_complexity > 15 else 'medium' if avg_complexity > 10 else 'low',
+            'file_count': total_files,
+            'total_lines': total_lines,
+            'average_complexity': avg_complexity
+        }
+    
+    def _recommend_strategy(self, characteristics: Dict) -> str:
+        """마이그레이션 전략 추천"""
+        if characteristics['size'] == 'large' and characteristics['complexity'] == 'high':
+            return 'strangler_fig'
+        elif characteristics['size'] == 'small':
+            return 'big_bang'
+        else:
+            return 'parallel_run'
+    
+    def _create_migration_phases(self, analysis_results: Dict, strategy: str) -> List[Dict]:
+        """마이그레이션 단계 생성"""
+        if strategy == 'strangler_fig':
+            return self._create_strangler_fig_phases(analysis_results)
+        elif strategy == 'big_bang':
+            return self._create_big_bang_phases(analysis_results)
+        else:
+            return self._create_parallel_run_phases(analysis_results)
+    
+    def _create_strangler_fig_phases(self, analysis_results: Dict) -> List[Dict]:
+        """Strangler Fig 패턴 단계 생성"""
+        # 의존성이 적고 독립적인 모듈부터 시작
+        prioritized_files = sorted(
+            analysis_results.items(),
+            key=lambda x: x[1].get('import_count', 0)
+        )
+        
+        phases = []
+        files_per_phase = max(1, len(prioritized_files) // 5)  # 5단계로 분할
+        
+        for i in range(0, len(prioritized_files), files_per_phase):
+            phase_files = prioritized_files[i:i + files_per_phase]
+            phases.append({
+                'phase': f'Phase {len(phases) + 1}',
+                'description': f'마이그레이션 단계 {len(phases) + 1}',
+                'files': [file_path for file_path, _ in phase_files],
+                'estimated_effort': f'{len(phase_files) * 2} person-days',
+                'dependencies': self._identify_dependencies(phase_files)
+            })
+        
+        return phases
+    
+    def _assess_risks(self, analysis_results: Dict) -> List[Dict]:
+        """위험 요소 평가"""
+        risks = []
+        
+        # 고복잡도 파일 위험
+        high_complexity_files = [
+            file_path for file_path, metrics in analysis_results.items()
+            if metrics.get('average_complexity', 0) > 15
+        ]
+        
+        if high_complexity_files:
+            risks.append({
+                'type': 'High Complexity',
+                'severity': 'High',
+                'description': f'{len(high_complexity_files)}개 파일이 고복잡도',
+                'mitigation': '단계별 리팩토링 및 충분한 테스트',
+                'affected_files': high_complexity_files[:5]  # 상위 5개만
+            })
+        
+        # 높은 결합도 위험
+        high_coupling_files = [
+            file_path for file_path, metrics in analysis_results.items()
+            if metrics.get('import_count', 0) > 20
+        ]
+        
+        if high_coupling_files:
+            risks.append({
+                'type': 'High Coupling',
+                'severity': 'Medium',
+                'description': f'{len(high_coupling_files)}개 파일이 높은 결합도',
+                'mitigation': '인터페이스 정의 및 의존성 주입 패턴 적용',
+                'affected_files': high_coupling_files[:5]
+            })
+        
+        return risks
+    
+    def _estimate_timeline(self, analysis_results: Dict) -> Dict:
+        """일정 추정"""
+        total_files = len(analysis_results)
+        total_lines = sum(metrics.get('line_count', 0) for metrics in analysis_results.values())
+        
+        # 파일당 평균 2일, 라인당 0.1시간 기준
+        estimated_days = (total_files * 2) + (total_lines * 0.1 / 8)
+        
+        return {
+            'estimated_days': int(estimated_days),
+            'estimated_weeks': int(estimated_days / 5),
+            'factors': {
+                'file_count_impact': total_files * 2,
+                'complexity_impact': total_lines * 0.1 / 8,
+                'buffer': '25% 추가 권장'
+            }
+        }
+    
+    def _estimate_resources(self, analysis_results: Dict) -> Dict:
+        """리소스 요구사항 추정"""
+        total_complexity = sum(
+            metrics.get('average_complexity', 0) for metrics in analysis_results.values()
+        )
+        
+        return {
+            'developers': {
+                'senior': 1,
+                'mid_level': 2,
+                'junior': 1
+            },
+            'specialists': {
+                'architect': 0.5,
+                'qa_engineer': 1,
+                'devops_engineer': 0.5
+            },
+            'estimated_cost': {
+                'development': 'TBD',
+                'testing': 'TBD',
+                'deployment': 'TBD'
+            }
+        }
+```
+
+## 🧪 레거시 코드 테스트 전략
+
+### 기존 코드 테스트 커버리지 분석
+```python
+class LegacyTestAnalyzer:
+    """레거시 코드 테스트 분석기"""
+    
+    def __init__(self, project_root: str):
+        self.project_root = Path(project_root)
+    
+    def analyze_test_coverage(self) -> Dict:
+        """테스트 커버리지 분석"""
+        source_files = self._find_source_files()
+        test_files = self._find_test_files()
+        
+        coverage_analysis = {
+            'source_files': len(source_files),
+            'test_files': len(test_files),
+            'coverage_ratio': len(test_files) / len(source_files) if source_files else 0,
+            'untested_files': [],
+            'test_patterns': self._analyze_test_patterns(test_files)
+        }
+        
+        # 테스트되지 않은 파일 찾기
+        tested_modules = self._extract_tested_modules(test_files)
+        
+        for source_file in source_files:
+            module_name = self._get_module_name(source_file)
+            if module_name not in tested_modules:
+                coverage_analysis['untested_files'].append(str(source_file))
+        
+        return coverage_analysis
+    
+    def _find_source_files(self) -> List[Path]:
+        """소스 파일 찾기"""
+        source_files = []
+        
+        for py_file in self.project_root.rglob('*.py'):
+            if not self._is_test_file(py_file) and not self._should_skip_file(py_file):
+                source_files.append(py_file)
+        
+        return source_files
+    
+    def _find_test_files(self) -> List[Path]:
+        """테스트 파일 찾기"""
+        test_files = []
+        
+        for py_file in self.project_root.rglob('*.py'):
+            if self._is_test_file(py_file):
+                test_files.append(py_file)
+        
+        return test_files
+    
+    def _is_test_file(self, file_path: Path) -> bool:
+        """테스트 파일 여부 판단"""
+        return (
+            file_path.name.startswith('test_') or
+            file_path.name.endswith('_test.py') or
+            'test' in file_path.parts
+        )
+    
+    def _extract_tested_modules(self, test_files: List[Path]) -> set:
+        """테스트에서 참조되는 모듈 추출"""
+        tested_modules = set()
+        
+        for test_file in test_files:
+            try:
+                with open(test_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # import 문에서 테스트 대상 모듈 추출
+                tree = ast.parse(content)
+                
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            tested_modules.add(alias.name.split('.')[0])
+                    elif isinstance(node, ast.ImportFrom):
+                        if node.module:
+                            tested_modules.add(node.module.split('.')[0])
+                            
+            except Exception:
+                continue
+        
+        return tested_modules
+    
+    def generate_test_recommendations(self, analysis_results: Dict) -> List[Dict]:
+        """테스트 권장사항 생성"""
+        recommendations = []
+        
+        # 테스트되지 않은 고복잡도 파일 우선 처리
+        for file_path, metrics in analysis_results.items():
+            if (file_path in self.untested_files and 
+                metrics.get('average_complexity', 0) > 10):
+                
+                recommendations.append({
+                    'file': file_path,
+                    'priority': 'High',
+                    'reason': 'High complexity without tests',
+                    'recommended_tests': [
+                        'Unit tests for complex functions',
+                        'Integration tests for main workflows',
+                        'Edge case testing'
+                    ]
+                })
+        
+        return sorted(recommendations, key=lambda x: x['priority'], reverse=True)
+```
+
+## 📈 진행 상황 모니터링
+
+### 리팩토링 진행률 추적
+```python
+class RefactoringProgressTracker:
+    """리팩토링 진행 상황 추적기"""
+    
+    def __init__(self, baseline_metrics: Dict):
+        self.baseline_metrics = baseline_metrics
+        self.progress_history = []
+    
+    def track_progress(self, current_metrics: Dict) -> Dict:
+        """현재 진행 상황 추적"""
+        progress = {
+            'timestamp': datetime.now().isoformat(),
+            'improvements': self._calculate_improvements(current_metrics),
+            'remaining_work': self._calculate_remaining_work(current_metrics),
+            'trend_analysis': self._analyze_trends()
+        }
+        
+        self.progress_history.append(progress)
+        return progress
+    
+    def _calculate_improvements(self, current_metrics: Dict) -> Dict:
+        """개선 사항 계산"""
+        improvements = {}
+        
+        baseline_complexity = sum(
+            metrics.get('average_complexity', 0) 
+            for metrics in self.baseline_metrics.values()
+        ) / len(self.baseline_metrics)
+        
+        current_complexity = sum(
+            metrics.get('average_complexity', 0) 
+            for metrics in current_metrics.values()
+        ) / len(current_metrics)
+        
+        improvements['complexity_reduction'] = baseline_complexity - current_complexity
+        improvements['complexity_improvement_percent'] = (
+            (baseline_complexity - current_complexity) / baseline_complexity * 100
+            if baseline_complexity > 0 else 0
+        )
+        
+        return improvements
+    
+    def generate_progress_report(self) -> Dict:
+        """진행 상황 보고서 생성"""
+        if not self.progress_history:
+            return {'error': 'No progress data available'}
+        
+        latest_progress = self.progress_history[-1]
+        
+        return {
+            'summary': {
+                'total_tracking_sessions': len(self.progress_history),
+                'latest_update': latest_progress['timestamp'],
+                'overall_improvement': latest_progress['improvements']
+            },
+            'trends': self._analyze_trends(),
+            'recommendations': self._generate_progress_recommendations()
+        }
+    
+    def _analyze_trends(self) -> Dict:
+        """트렌드 분석"""
+        if len(self.progress_history) < 2:
+            return {'status': 'Insufficient data for trend analysis'}
+        
+        # 복잡도 트렌드 분석
+        complexity_improvements = [
+            progress['improvements'].get('complexity_reduction', 0)
+            for progress in self.progress_history
+        ]
+        
+        return {
+            'complexity_trend': 'improving' if complexity_improvements[-1] > complexity_improvements[0] else 'declining',
+            'average_improvement_per_session': sum(complexity_improvements) / len(complexity_improvements),
+            'best_improvement_session': max(complexity_improvements),
+            'consistency': 'consistent' if all(x >= 0 for x in complexity_improvements) else 'inconsistent'
+        }
+```
+
+이 규칙들은 모든 프로젝트의 레거시 코드 분석 및 리팩토링에 적용할 수 있는 범용 표준입니다.
+

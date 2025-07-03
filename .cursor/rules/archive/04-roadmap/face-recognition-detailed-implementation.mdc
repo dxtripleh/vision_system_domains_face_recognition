@@ -1,0 +1,988 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 얼굴인식 상세 구현 가이드 (Face Recognition Detailed Implementation)
+
+## 🎯 **현재 진행 상황**
+- **Phase**: Week 3-4 AI 모델 통합 단계
+- **목표**: RetinaFace + ArcFace 실제 통합 완료
+- **우선순위**: 최고 (현재 활발히 진행 중)
+
+# 📋 얼굴인식 도메인 상세 구현 가이드
+
+> **최종 업데이트**: 2025-06-28  
+> **버전**: v1.1.0  
+> **대상**: 얼굴인식 도메인 개발자
+
+## 🎯 **얼굴인식 도메인 개발 목표**
+
+### **🧑 얼굴인식 도메인 구조**
+```
+domains/face_recognition/      # 얼굴인식 도메인 (완전 독립)
+├── core/                      # 도메인 핵심 로직
+│   ├── entities/              # 도메인 엔티티 (Face, Person)
+│   ├── services/              # 도메인 서비스
+│   ├── repositories/          # 데이터 저장소 인터페이스
+│   └── value_objects/         # 값 객체
+├── infrastructure/            # 외부 서비스 연동
+│   ├── detection/             # 얼굴 검출 구현체
+│   ├── recognition/           # 얼굴 인식 구현체
+│   ├── storage/               # 데이터 저장 구현체
+│   └── external_apis/         # 외부 API 연동
+├── interfaces/                # API 인터페이스
+│   ├── rest/                  # REST API
+│   ├── grpc/                  # gRPC API (선택적)
+│   └── cli/                   # CLI 인터페이스
+├── config/                    # 도메인별 설정
+│   ├── models.yaml            # 모델 설정
+│   ├── detection.yaml         # 검출 설정
+│   └── recognition.yaml       # 인식 설정
+└── tests/                     # 도메인별 테스트
+    ├── unit/                  # 단위 테스트
+    ├── integration/           # 통합 테스트
+    └── e2e/                   # E2E 테스트
+```
+
+### **📂 데이터 관리 구조 (중요!)**
+```
+datasets/face_recognition/     # 🎯 학습 전용 데이터
+├── raw/                       # 원본 얼굴 이미지
+├── processed/                 # 전처리된 이미지 (정렬, 크기 조정)
+├── annotations/               # 라벨링 데이터 (JSON, CSV)
+└── splits/                    # train/validation/test 분할
+
+data/                          # 🎯 런타임 전용 데이터
+├── temp/                      # 임시 파일 (자동 정리)
+├── logs/                      # 시스템 로그
+└── output/                    # 추론 결과, 처리 결과물
+
+models/                        # 🎯 모델 저장소
+├── weights/                   # 학습된 모델 가중치
+├── metadata/                  # 모델 메타데이터
+└── configs/                   # 모델 설정 파일
+```
+
+## ⚠️ **중요한 파일 관리 규칙**
+
+### **🚫 절대 금지 사항**
+```python
+# ❌ 절대 금지: 루트 디렉토리에 임시 파일, 로그 파일 생성
+FORBIDDEN_ROOT_FILES = [
+    "*.log",           # 로그 파일 → data/logs/ 에 저장
+    "*.tmp",           # 임시 파일 → data/temp/ 에 저장
+    "output_*",        # 결과물 → data/output/ 에 저장
+    "temp_*",          # 임시 파일 → data/temp/ 에 저장
+    "cache_*",         # 캐시 파일 → data/temp/ 에 저장
+    "debug_*",         # 디버그 파일 → data/logs/ 에 저장
+    "result_*",        # 결과 파일 → data/output/ 에 저장
+    "face_*.jpg",      # 처리된 이미지 → data/output/ 에 저장
+]
+
+# ✅ 올바른 파일 저장 위치
+CORRECT_FILE_LOCATIONS = {
+    'training_logs': 'data/logs/training/',      # 훈련 로그
+    'inference_logs': 'data/logs/inference/',    # 추론 로그
+    'temp_images': 'data/temp/',                 # 임시 이미지
+    'results': 'data/output/results/',           # 추론 결과
+    'models': 'models/weights/',                 # 모델 가중치
+    'datasets': 'datasets/face_recognition/',    # 학습 데이터
+    'configs': 'config/',                        # 설정 파일
+}
+```
+
+### **📂 데이터 폴더 사용 가이드**
+```python
+# 🎯 datasets/face_recognition/ 사용법
+DATASETS_USAGE = {
+    'raw/': {
+        'purpose': '원본 얼굴 이미지 저장',
+        'format': 'JPG, PNG',
+        'structure': 'person_id/image_name.jpg',
+        'example': 'datasets/face_recognition/raw/person_001/face_001.jpg'
+    },
+    'processed/': {
+        'purpose': '전처리된 얼굴 이미지 (정렬, 크기 조정)',
+        'format': 'JPG, PNG',
+        'structure': 'person_id/processed_image_name.jpg',
+        'example': 'datasets/face_recognition/processed/person_001/aligned_face_001.jpg'
+    },
+    'annotations/': {
+        'purpose': '라벨링 데이터, 메타데이터',
+        'format': 'JSON, CSV, XML',
+        'structure': 'annotations.json, metadata.csv',
+        'example': 'datasets/face_recognition/annotations/face_labels.json'
+    },
+    'splits/': {
+        'purpose': 'train/validation/test 분할 정보',
+        'format': 'TXT, JSON',
+        'structure': 'train.txt, val.txt, test.txt',
+        'example': 'datasets/face_recognition/splits/train.txt'
+    }
+}
+
+# 🎯 data/ 사용법
+DATA_USAGE = {
+    'temp/': {
+        'purpose': '일시적 파일 저장 (자동 정리)',
+        'retention': '24시간',
+        'example': 'data/temp/temp_face_20250628_143022.jpg'
+    },
+    'logs/': {
+        'purpose': '시스템 로그, 에러 로그',
+        'retention': '30일',
+        'example': 'data/logs/face_recognition_20250628.log'
+    },
+    'output/': {
+        'purpose': '추론 결과, 처리 결과물',
+        'retention': '사용자 정의',
+        'example': 'data/output/recognition_results_20250628.json'
+    }
+}
+```
+
+## 📅 **9주 상세 개발 일정**
+
+### **🏗️ Week 0: Clean Slate 아키텍처 구축 (7일)**
+
+#### **Day 1-2: 얼굴인식 도메인 기본 구조 생성**
+```bash
+# 1. 도메인 핵심 구조 생성
+mkdir domains\face_recognition\core\entities
+mkdir domains\face_recognition\core\services  
+mkdir domains\face_recognition\core\repositories
+mkdir domains\face_recognition\core\value_objects
+
+# 2. 인프라 구조 생성
+mkdir domains\face_recognition\infrastructure\detection
+mkdir domains\face_recognition\infrastructure\recognition
+mkdir domains\face_recognition\infrastructure\storage
+mkdir domains\face_recognition\infrastructure\external_apis
+
+# 3. 인터페이스 구조 생성
+mkdir domains\face_recognition\interfaces\rest
+mkdir domains\face_recognition\interfaces\cli
+
+# 4. 설정 및 테스트 구조
+mkdir domains\face_recognition\config
+mkdir domains\face_recognition\tests\unit
+mkdir domains\face_recognition\tests\integration
+mkdir domains\face_recognition\tests\e2e
+
+# 5. 데이터 관리 구조 (이미 생성됨)
+# datasets/face_recognition/{raw,processed,annotations,splits}
+# data/{temp,logs,output}
+# models/{weights,metadata,configs}
+```
+
+**주요 작업:**
+- [x] 폴더 구조 생성 완료
+- [ ] 기본 `__init__.py` 파일 생성
+- [ ] 도메인 엔티티 정의 (`Face`, `Person`, `FaceEmbedding`)
+- [ ] 리포지토리 인터페이스 정의
+- [ ] 기본 설정 파일 생성
+
+#### **Day 3-4: 핵심 엔티티 및 값 객체 구현**
+**파일 생성 목록:**
+```python
+# domains/face_recognition/core/entities/
+├── __init__.py
+├── face.py          # Face 엔티티
+├── person.py        # Person 엔티티  
+└── face_embedding.py # FaceEmbedding 엔티티
+
+# domains/face_recognition/core/value_objects/
+├── __init__.py
+├── bounding_box.py  # 바운딩 박스 값 객체
+├── confidence.py    # 신뢰도 값 객체
+└── face_id.py       # 얼굴 ID 값 객체
+
+# domains/face_recognition/core/repositories/
+├── __init__.py
+├── face_repository.py      # 얼굴 저장소 인터페이스
+├── person_repository.py    # 사람 저장소 인터페이스
+└── embedding_repository.py # 임베딩 저장소 인터페이스
+```
+
+**구현 내용:**
+- Face 엔티티: 얼굴 데이터 모델링
+- Person 엔티티: 사람 정보 모델링
+- BoundingBox: 얼굴 위치 정보
+- Confidence: 신뢰도 점수 관리
+- Repository 인터페이스: 데이터 접근 추상화
+
+#### **Day 5-6: 공유 모듈 기반 구축**
+**파일 생성 목록:**
+```python
+# shared/vision_core/
+├── __init__.py
+├── base_detector.py     # 기본 검출기 인터페이스
+├── base_recognizer.py   # 기본 인식기 인터페이스
+├── image_processor.py   # 이미지 전처리 유틸리티
+└── model_loader.py      # 모델 로딩 유틸리티
+
+# shared/security/
+├── __init__.py
+├── data_anonymizer.py   # 데이터 익명화
+├── gdpr_compliance.py   # GDPR 준수 도구
+└── encryption.py        # 암호화 유틸리티
+
+# common/
+├── __init__.py
+├── logging_config.py    # 로깅 설정
+├── file_utils.py        # 파일 유틸리티
+└── config_loader.py     # 설정 로딩
+```
+
+**구현 내용:**
+- 기본 인터페이스 정의
+- 공통 이미지 처리 함수
+- 보안 및 개인정보 보호 기능
+- 로깅 및 설정 시스템
+
+#### **Day 7: Week 0 통합 테스트 및 검증**
+**검증 항목:**
+- [ ] 모든 폴더 구조 생성 완료
+- [ ] 기본 엔티티 정의 완료
+- [ ] 인터페이스 정의 완료
+- [ ] 공유 모듈 기본 구조 완료
+- [ ] 설정 파일 및 로깅 시스템 동작 확인
+- [ ] 단위 테스트 기본 구조 생성
+
+---
+
+### **🔍 Week 1: 얼굴 검출 시스템 구축 (7일)**
+
+#### **Day 1-2: 얼굴 검출기 구현**
+**파일 생성 목록:**
+```python
+# domains/face_recognition/infrastructure/detection/
+├── __init__.py
+├── opencv_detector.py      # OpenCV 기반 검출기
+├── mtcnn_detector.py       # MTCNN 검출기
+├── retinaface_detector.py  # RetinaFace 검출기
+└── detector_factory.py     # 검출기 팩토리
+
+# domains/face_recognition/core/services/
+├── __init__.py
+├── face_detection_service.py  # 얼굴 검출 서비스
+└── face_preprocessing_service.py # 전처리 서비스
+```
+
+**구현 내용:**
+- OpenCV Haar Cascade 검출기
+- MTCNN 딥러닝 검출기
+- RetinaFace 고성능 검출기
+- 검출기 선택 및 관리 팩토리 패턴
+- 얼굴 전처리 (정렬, 크기 조정)
+
+#### **Day 3-4: 모델 다운로드 및 관리 시스템**
+**파일 생성 목록:**
+```python
+# scripts/model_management/
+├── __init__.py
+├── download_models.py      # 모델 자동 다운로드
+├── model_validator.py      # 모델 무결성 검증
+└── model_registry.py       # 모델 레지스트리
+
+# domains/face_recognition/config/
+├── models.yaml            # 모델 설정
+├── detection.yaml         # 검출 설정
+└── preprocessing.yaml     # 전처리 설정
+```
+
+**구현 내용:**
+- 사전 훈련된 모델 자동 다운로드
+- 모델 버전 관리 및 무결성 검증
+- 설정 기반 모델 선택
+- 모델 메타데이터 관리
+
+#### **Day 5-6: 검출 성능 최적화**
+**최적화 영역:**
+- GPU 가속 지원 (CUDA)
+- 배치 처리 구현
+- 메모리 효율성 개선
+- 멀티스레딩 지원
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/infrastructure/detection/
+├── gpu_detector.py         # GPU 가속 검출기
+├── batch_detector.py       # 배치 처리 검출기
+└── async_detector.py       # 비동기 검출기
+
+# shared/vision_core/
+├── gpu_utils.py           # GPU 유틸리티
+├── memory_manager.py      # 메모리 관리
+└── performance_monitor.py # 성능 모니터링
+```
+
+#### **Day 7: Week 1 통합 테스트**
+**테스트 항목:**
+- [ ] 다양한 검출기 정확도 테스트
+- [ ] 성능 벤치마크 (FPS, 메모리 사용량)
+- [ ] GPU vs CPU 성능 비교
+- [ ] 배치 처리 효율성 검증
+- [ ] 에러 처리 및 예외 상황 테스트
+
+---
+
+### **🧠 Week 2: 얼굴 인식 시스템 구축 (7일)**
+
+#### **Day 1-2: 얼굴 임베딩 생성기 구현**
+**파일 생성 목록:**
+```python
+# domains/face_recognition/infrastructure/recognition/
+├── __init__.py
+├── facenet_embedder.py     # FaceNet 임베딩
+├── arcface_embedder.py     # ArcFace 임베딩
+├── dlib_embedder.py        # Dlib 임베딩
+└── embedder_factory.py     # 임베딩 팩토리
+
+# domains/face_recognition/core/services/
+├── embedding_service.py    # 임베딩 생성 서비스
+└── similarity_service.py   # 유사도 계산 서비스
+```
+
+**구현 내용:**
+- FaceNet 512차원 임베딩
+- ArcFace 고성능 임베딩
+- Dlib 128차원 임베딩
+- 임베딩 정규화 및 최적화
+- 코사인 유사도 계산
+
+#### **Day 3-4: 벡터 데이터베이스 연동**
+**파일 생성 목록:**
+```python
+# domains/face_recognition/infrastructure/storage/
+├── __init__.py
+├── faiss_storage.py        # FAISS 벡터 저장소
+├── chroma_storage.py       # ChromaDB 저장소
+├── memory_storage.py       # 메모리 저장소
+└── storage_factory.py      # 저장소 팩토리
+
+# domains/face_recognition/core/services/
+├── face_matching_service.py   # 얼굴 매칭 서비스
+└── face_search_service.py     # 얼굴 검색 서비스
+```
+
+**구현 내용:**
+- FAISS 고속 벡터 검색
+- ChromaDB 클라우드 벡터 DB
+- 인메모리 캐시 저장소
+- 임베딩 인덱싱 및 검색
+- 유사도 기반 매칭
+
+#### **Day 5-6: 인식 정확도 향상**
+**향상 기법:**
+- 임베딩 앙상블
+- 동적 임계값 조정
+- 품질 기반 필터링
+- 증분 학습 지원
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/core/services/
+├── ensemble_service.py     # 앙상블 서비스
+├── threshold_optimizer.py  # 임계값 최적화
+├── quality_assessor.py     # 품질 평가
+└── incremental_learner.py  # 증분 학습
+
+# domains/face_recognition/infrastructure/recognition/
+├── quality_filter.py       # 품질 필터
+└── adaptive_threshold.py   # 적응형 임계값
+```
+
+#### **Day 7: Week 2 통합 테스트**
+**테스트 항목:**
+- [ ] 임베딩 품질 평가
+- [ ] 벡터 검색 성능 테스트
+- [ ] 매칭 정확도 측정
+- [ ] 대용량 데이터 처리 테스트
+- [ ] 메모리 사용량 최적화 검증
+
+---
+
+### **🗄️ Week 3: 데이터베이스 및 저장소 구축 (7일)**
+
+#### **Day 1-2: 관계형 데이터베이스 설계**
+**데이터베이스 스키마:**
+```sql
+-- 사람 정보 테이블
+CREATE TABLE persons (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 얼굴 정보 테이블
+CREATE TABLE faces (
+    id UUID PRIMARY KEY,
+    person_id UUID REFERENCES persons(id),
+    image_path VARCHAR(500),
+    bounding_box JSON,
+    quality_score FLOAT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 임베딩 테이블
+CREATE TABLE face_embeddings (
+    id UUID PRIMARY KEY,
+    face_id UUID REFERENCES faces(id),
+    embedding_model VARCHAR(100),
+    embedding_vector FLOAT[],
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/infrastructure/storage/
+├── postgresql_repository.py  # PostgreSQL 구현
+├── sqlite_repository.py      # SQLite 구현
+├── database_migrations.py    # 마이그레이션
+└── connection_manager.py     # 연결 관리
+
+# domains/face_recognition/core/repositories/
+├── person_repository_impl.py    # 사람 저장소 구현
+├── face_repository_impl.py      # 얼굴 저장소 구현
+└── embedding_repository_impl.py # 임베딩 저장소 구현
+```
+
+#### **Day 3-4: 파일 저장소 시스템**
+**파일 저장 전략:**
+- 로컬 파일 시스템
+- AWS S3 클라우드 저장소
+- 이미지 압축 및 최적화
+- 메타데이터 관리
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/infrastructure/storage/
+├── local_file_storage.py    # 로컬 파일 저장소
+├── s3_file_storage.py       # S3 클라우드 저장소
+├── image_optimizer.py       # 이미지 최적화
+└── metadata_manager.py      # 메타데이터 관리
+
+# shared/vision_core/
+├── image_compressor.py      # 이미지 압축
+├── format_converter.py      # 포맷 변환
+└── thumbnail_generator.py   # 썸네일 생성
+```
+
+#### **Day 5-6: 캐싱 및 성능 최적화**
+**캐싱 전략:**
+- Redis 인메모리 캐시
+- LRU 캐시 구현
+- 임베딩 캐시 최적화
+- 데이터베이스 쿼리 최적화
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/infrastructure/storage/
+├── redis_cache.py          # Redis 캐시
+├── memory_cache.py         # 메모리 캐시
+├── cache_manager.py        # 캐시 관리자
+└── query_optimizer.py      # 쿼리 최적화
+
+# shared/vision_core/
+├── lru_cache.py           # LRU 캐시 구현
+└── cache_decorator.py     # 캐시 데코레이터
+```
+
+#### **Day 7: Week 3 통합 테스트**
+**테스트 항목:**
+- [ ] 데이터베이스 CRUD 연산 테스트
+- [ ] 파일 저장소 업로드/다운로드 테스트
+- [ ] 캐시 성능 및 일관성 테스트
+- [ ] 대용량 데이터 처리 성능 테스트
+- [ ] 백업 및 복구 시스템 테스트
+
+---
+
+### **🔌 Week 4: API 인터페이스 구축 (7일)**
+
+#### **Day 1-2: REST API 설계 및 구현**
+**API 엔드포인트 설계:**
+```yaml
+# API 명세
+/api/v1/persons:
+  POST: 새 사람 등록
+  GET: 사람 목록 조회
+  
+/api/v1/persons/{id}:
+  GET: 특정 사람 정보 조회
+  PUT: 사람 정보 수정
+  DELETE: 사람 삭제
+  
+/api/v1/faces:
+  POST: 얼굴 이미지 업로드 및 등록
+  GET: 얼굴 목록 조회
+  
+/api/v1/faces/detect:
+  POST: 이미지에서 얼굴 검출
+  
+/api/v1/faces/recognize:
+  POST: 얼굴 인식 및 매칭
+  
+/api/v1/faces/search:
+  POST: 유사한 얼굴 검색
+```
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/interfaces/rest/
+├── __init__.py
+├── app.py                  # FastAPI 앱
+├── person_router.py        # 사람 관련 API
+├── face_router.py          # 얼굴 관련 API
+├── detection_router.py     # 검출 API
+├── recognition_router.py   # 인식 API
+├── search_router.py        # 검색 API
+├── models/                 # Pydantic 모델
+│   ├── person_models.py
+│   ├── face_models.py
+│   └── response_models.py
+└── middleware/             # 미들웨어
+    ├── auth_middleware.py
+    ├── cors_middleware.py
+    └── rate_limit_middleware.py
+```
+
+#### **Day 3-4: 인증 및 보안 시스템**
+**보안 기능:**
+- JWT 토큰 인증
+- API 키 관리
+- 요청 제한 (Rate Limiting)
+- CORS 설정
+- 입력 검증 및 살균
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/interfaces/rest/security/
+├── __init__.py
+├── jwt_handler.py          # JWT 토큰 처리
+├── api_key_manager.py      # API 키 관리
+├── rate_limiter.py         # 요청 제한
+├── input_validator.py      # 입력 검증
+└── security_config.py      # 보안 설정
+
+# shared/security/
+├── token_generator.py      # 토큰 생성
+├── password_hasher.py      # 비밀번호 해싱
+└── audit_logger.py         # 보안 감사 로그
+```
+
+#### **Day 5-6: API 문서화 및 테스트**
+**문서화 도구:**
+- OpenAPI/Swagger 자동 생성
+- API 사용 예제
+- 포스트맨 컬렉션
+- 통합 테스트 작성
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/interfaces/rest/
+├── docs/                   # API 문서
+│   ├── openapi_config.py
+│   ├── examples.py
+│   └── postman_collection.json
+└── tests/                  # API 테스트
+    ├── test_person_api.py
+    ├── test_face_api.py
+    ├── test_detection_api.py
+    ├── test_recognition_api.py
+    └── test_security.py
+
+# scripts/api_testing/
+├── load_test.py           # 부하 테스트
+├── integration_test.py    # 통합 테스트
+└── performance_test.py    # 성능 테스트
+```
+
+#### **Day 7: Week 4 통합 테스트**
+**테스트 항목:**
+- [ ] 모든 API 엔드포인트 기능 테스트
+- [ ] 인증 및 권한 부여 테스트
+- [ ] 입력 검증 및 에러 처리 테스트
+- [ ] API 성능 및 부하 테스트
+- [ ] 보안 취약점 스캔
+
+---
+
+### **🖥️ Week 5: CLI 도구 및 스크립트 (7일)**
+
+#### **Day 1-2: 명령줄 인터페이스 구현**
+**CLI 명령어 설계:**
+```bash
+# 사람 관리
+face-cli person add --name "John Doe" --image-dir "./images/john/"
+face-cli person list
+face-cli person delete --id "person-uuid"
+
+# 얼굴 검출
+face-cli detect --input "./image.jpg" --output "./detected.jpg"
+face-cli detect --input-dir "./images/" --output-dir "./detected/"
+
+# 얼굴 인식
+face-cli recognize --input "./unknown.jpg" --threshold 0.8
+face-cli recognize --input-dir "./unknowns/" --batch-size 10
+
+# 데이터베이스 관리
+face-cli db migrate
+face-cli db backup --output "./backup.sql"
+face-cli db restore --input "./backup.sql"
+
+# 모델 관리
+face-cli model download --name "facenet"
+face-cli model list
+face-cli model benchmark
+```
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/interfaces/cli/
+├── __init__.py
+├── main.py                # CLI 메인 엔트리포인트
+├── commands/              # 명령어 구현
+│   ├── __init__.py
+│   ├── person_commands.py
+│   ├── detection_commands.py
+│   ├── recognition_commands.py
+│   ├── database_commands.py
+│   └── model_commands.py
+├── utils/                 # CLI 유틸리티
+│   ├── progress_bar.py
+│   ├── table_formatter.py
+│   └── file_handler.py
+└── config/                # CLI 설정
+    └── cli_config.py
+```
+
+#### **Day 3-4: 배치 처리 스크립트**
+**배치 처리 기능:**
+- 대량 이미지 처리
+- 데이터셋 전처리
+- 성능 벤치마킹
+- 데이터 마이그레이션
+
+**파일 생성 목록:**
+```python
+# scripts/batch_processing/
+├── __init__.py
+├── batch_detect.py        # 배치 얼굴 검출
+├── batch_recognize.py     # 배치 얼굴 인식
+├── dataset_preprocessor.py # 데이터셋 전처리
+├── performance_benchmark.py # 성능 벤치마크
+└── data_migrator.py       # 데이터 마이그레이션
+
+# scripts/data_processing/
+├── image_validator.py     # 이미지 검증
+├── duplicate_detector.py  # 중복 이미지 검출
+├── quality_assessor.py    # 이미지 품질 평가
+└── annotation_converter.py # 어노테이션 변환
+```
+
+#### **Day 5-6: 모니터링 및 로깅 시스템**
+**모니터링 기능:**
+- 시스템 성능 모니터링
+- 에러 추적 및 알림
+- 사용량 통계
+- 로그 분석 도구
+
+**파일 생성 목록:**
+```python
+# scripts/monitoring/
+├── __init__.py
+├── system_monitor.py      # 시스템 모니터링
+├── error_tracker.py       # 에러 추적
+├── usage_analyzer.py      # 사용량 분석
+└── log_analyzer.py        # 로그 분석
+
+# shared/monitoring/
+├── metrics_collector.py   # 메트릭 수집
+├── alert_manager.py       # 알림 관리
+├── dashboard_generator.py # 대시보드 생성
+└── report_generator.py    # 리포트 생성
+```
+
+#### **Day 7: Week 5 통합 테스트**
+**테스트 항목:**
+- [ ] CLI 명령어 기능 테스트
+- [ ] 배치 처리 성능 테스트
+- [ ] 모니터링 시스템 정확성 테스트
+- [ ] 로그 수집 및 분석 테스트
+- [ ] 에러 처리 및 복구 테스트
+
+---
+
+### **🧪 Week 6: 테스트 및 품질 보증 (7일)**
+
+#### **Day 1-2: 단위 테스트 완성**
+**테스트 커버리지 목표: 90% 이상**
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/tests/unit/
+├── test_entities/
+│   ├── test_face.py
+│   ├── test_person.py
+│   └── test_face_embedding.py
+├── test_services/
+│   ├── test_detection_service.py
+│   ├── test_recognition_service.py
+│   ├── test_embedding_service.py
+│   └── test_matching_service.py
+├── test_repositories/
+│   ├── test_face_repository.py
+│   ├── test_person_repository.py
+│   └── test_embedding_repository.py
+└── test_infrastructure/
+    ├── test_detectors.py
+    ├── test_embedders.py
+    └── test_storage.py
+```
+
+#### **Day 3-4: 통합 테스트 구현**
+**통합 테스트 시나리오:**
+- 전체 얼굴 인식 파이프라인
+- API 엔드투엔드 테스트
+- 데이터베이스 연동 테스트
+- 외부 서비스 연동 테스트
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/tests/integration/
+├── test_face_recognition_pipeline.py
+├── test_api_integration.py
+├── test_database_integration.py
+├── test_storage_integration.py
+├── test_cache_integration.py
+└── fixtures/
+    ├── test_images/
+    ├── test_data.json
+    └── mock_responses.py
+```
+
+#### **Day 5-6: 성능 테스트 및 최적화**
+**성능 테스트 영역:**
+- 처리 속도 벤치마크
+- 메모리 사용량 프로파일링
+- 동시성 테스트
+- 스트레스 테스트
+
+**파일 생성 목록:**
+```python
+# domains/face_recognition/tests/performance/
+├── benchmark_detection.py
+├── benchmark_recognition.py
+├── memory_profiler.py
+├── concurrency_test.py
+├── stress_test.py
+└── performance_report.py
+
+# scripts/optimization/
+├── profiler.py
+├── memory_optimizer.py
+├── gpu_optimizer.py
+└── cache_optimizer.py
+```
+
+#### **Day 7: Week 6 종합 테스트**
+**종합 검증 항목:**
+- [ ] 전체 시스템 기능 테스트
+- [ ] 성능 요구사항 달성 확인
+- [ ] 보안 취약점 스캔
+- [ ] 코드 품질 검사
+- [ ] 문서화 완성도 검증
+
+---
+
+### **🚀 Week 7: 배포 및 운영 준비 (7일)**
+
+#### **Day 1-2: 도커화 및 컨테이너 구성**
+**컨테이너 구성:**
+- 애플리케이션 컨테이너
+- 데이터베이스 컨테이너
+- Redis 캐시 컨테이너
+- 로드 밸런서 설정
+
+**파일 생성 목록:**
+```dockerfile
+# Dockerfile
+FROM python:3.9-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["uvicorn", "domains.face_recognition.interfaces.rest.app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# docker-compose.yml
+version: '3.8'
+services:
+  face-recognition-api:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/facedb
+      - REDIS_URL=redis://redis:6379
+  
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: facedb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  
+  redis:
+    image: redis:6-alpine
+    
+volumes:
+  postgres_data:
+```
+
+#### **Day 3-4: CI/CD 파이프라인 구축**
+**CI/CD 구성:**
+- GitHub Actions 워크플로우
+- 자동 테스트 실행
+- 코드 품질 검사
+- 자동 배포 스크립트
+
+**파일 생성 목록:**
+```yaml
+# .github/workflows/ci.yml
+name: CI/CD Pipeline
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Run tests
+        run: |
+          pytest --cov=domains/face_recognition
+          flake8 domains/
+          mypy domains/
+      - name: Security scan
+        run: bandit -r domains/
+  
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to production
+        run: |
+          # 배포 스크립트 실행
+```
+
+#### **Day 5-6: 모니터링 및 로깅 시스템 구축**
+**운영 모니터링:**
+- Prometheus 메트릭 수집
+- Grafana 대시보드
+- ELK 스택 로그 분석
+- 알림 시스템 구축
+
+**파일 생성 목록:**
+```python
+# monitoring/
+├── prometheus_config.yml
+├── grafana_dashboard.json
+├── elasticsearch_config.yml
+├── logstash_config.conf
+└── alert_rules.yml
+
+# domains/face_recognition/monitoring/
+├── metrics_exporter.py
+├── health_checker.py
+├── performance_tracker.py
+└── alert_manager.py
+```
+
+#### **Day 7: Week 7 배포 테스트**
+**배포 검증 항목:**
+- [ ] 도커 컨테이너 정상 구동
+- [ ] CI/CD 파이프라인 동작 확인
+- [ ] 모니터링 시스템 데이터 수집 확인
+- [ ] 로드 테스트 수행
+- [ ] 장애 복구 시나리오 테스트
+
+---
+
+### **📊 Week 8: 최종 검증 및 문서화 (7일)**
+
+#### **Day 1-2: 성능 최적화 및 튜닝**
+**최적화 영역:**
+- 모델 추론 속도 개선
+- 데이터베이스 쿼리 최적화
+- 캐시 전략 개선
+- 메모리 사용량 최적화
+
+#### **Day 3-4: 보안 강화 및 컴플라이언스**
+**보안 검증:**
+- GDPR 준수 확인
+- 개인정보 보호 정책 구현
+- 보안 취약점 스캔 및 수정
+- 접근 제어 강화
+
+#### **Day 5-6: 사용자 가이드 및 API 문서 작성**
+**문서화 항목:**
+- 설치 및 설정 가이드
+- API 사용법 및 예제
+- 트러블슈팅 가이드
+- 개발자 문서
+
+#### **Day 7: 최종 검수 및 릴리스 준비**
+**최종 검증 체크리스트:**
+- [ ] 모든 기능 요구사항 충족 확인
+- [ ] 성능 요구사항 달성 확인
+- [ ] 보안 요구사항 준수 확인
+- [ ] 문서화 완성도 확인
+- [ ] 사용자 수용 테스트 완료
+- [ ] 릴리스 노트 작성
+
+---
+
+## 🎯 **주요 마일스톤 및 성공 지표**
+
+### **기능적 요구사항**
+- [ ] 얼굴 검출 정확도 95% 이상
+- [ ] 얼굴 인식 정확도 98% 이상
+- [ ] 처리 속도 30 FPS 이상 (GPU 환경)
+- [ ] 1:N 매칭 1초 이내 (10,000명 기준)
+
+### **비기능적 요구사항**
+- [ ] API 응답 시간 200ms 이하
+- [ ] 시스템 가용성 99.9% 이상
+- [ ] 동시 사용자 1,000명 지원
+- [ ] 메모리 사용량 4GB 이하
+
+### **보안 요구사항**
+- [ ] GDPR 완전 준수
+- [ ] 개인정보 암호화 저장
+- [ ] 접근 로그 완전 추적
+- [ ] 보안 취약점 Zero
+
+이제 **Week 0 Day 1-2**부터 체계적으로 개발을 시작할 수 있습니다!

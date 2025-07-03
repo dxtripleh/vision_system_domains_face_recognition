@@ -1,0 +1,731 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 설정 파일 완전 분석 (Common Configuration Complete Analysis)
+
+이 문서는 비전 시스템 프로젝트의 설정 파일 구조와 규칙을 상세히 분석합니다.
+
+## 1. 설정 파일 구조 개요
+
+비전 시스템 프로젝트의 설정 파일은 다음과 같은 계층 구조로 정리되어 있습니다:
+
+```
+config/
+├── apps/                  # 애플리케이션별 설정
+│   ├── camera_app/        # 카메라 앱 설정
+│   │   └── camera_app_config.yaml
+│   ├── factory/           # 공장 관련 앱 설정
+│   │   └── factory_config.yaml
+│   ├── humanoid/          # 휴머노이드 앱 설정
+│   │   └── humanoid_config.yaml
+│   ├── security/          # 보안 앱 설정
+│   │   └── security_config.yaml
+│   └── applications_config.yaml # 공통 앱 설정
+├── datasets/              # 데이터셋 설정
+│   ├── face_dataset.yaml
+│   ├── object_detection_dataset.yaml
+│   └── powerline_defect_dataset.yaml
+├── environments/          # 환경별 설정
+│   ├── current_config.yaml    # 현재 환경 설정
+│   ├── development_config.yaml # 개발 환경 설정
+│   ├── production_config.yaml  # 운영 환경 설정
+│   └── testing_config.yaml     # 테스트 환경 설정
+├── models/                # 모델 설정
+│   ├── defect_detection_model.yaml
+│   ├── face_detection_model.yaml
+│   ├── object_detection_model.yaml
+│   └── config.yaml        # 공통 모델 설정
+├── modules/               # 모듈별 설정
+│   ├── camera_config.yaml
+│   ├── model_config.yaml
+│   └── module_template.yaml
+├── schemas/               # 스키마 정의
+│   ├── app_schema.yaml
+│   ├── base_schema.yaml
+│   └── module_schema.yaml
+├── system/                # 시스템 설정
+│   ├── logging.yaml
+│   └── setup.cfg
+└── templates/             # 템플릿 파일
+    ├── app_template.yaml
+    └── application_template.yaml
+```
+
+## 2. 설정 파일 표준 구조
+
+### 2.1 기본 메타데이터 구조
+모든 설정 파일은 다음과 같은 기본 메타데이터를 포함해야 합니다:
+
+```yaml
+version: "1.0.0"
+meta:
+  lastModified: "2024-07-01T10:00:00Z"
+  description: "설정 파일 설명"
+  status: "active"  # active, deprecated, experimental
+  responsible:
+    team: "team_name"
+    lead: "lead_name"
+  review:
+    lastReviewed: "2024-07-01"
+    nextReviewDue: "2024-10-01"
+```
+
+### 2.2 환경별 설정 구조
+```yaml
+# environments/ 폴더 내 설정 파일 구조
+environment:
+  name: "development"  # development, production, testing
+  debug: true
+  log_level: "DEBUG"
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "vision_system_dev"
+  ssl: false
+
+hardware:
+  gpu_enabled: true
+  gpu_memory_limit: "8GB"
+  cpu_cores: 8
+
+paths:
+  data_dir: "./data"
+  models_dir: "./models"
+  logs_dir: "./data/logs"
+  temp_dir: "./data/temp"
+
+monitoring:
+  enabled: true
+  metrics_port: 9090
+  health_check_interval: 30
+```
+
+### 2.3 모델 설정 구조
+```yaml
+# models/ 폴더 내 설정 파일 구조
+model:
+  name: "yolov8n"
+  type: "detection"  # detection, classification, segmentation
+  framework: "pytorch"  # pytorch, tensorflow, onnx
+  
+  # 모델 파일 정보
+  files:
+    weights: "models/weights/yolov8n.pt"
+    config: "models/configs/yolov8n.yaml"
+    metadata: "models/metadata/yolov8n.json"
+  
+  # 입력 설정
+  input:
+    size: [640, 640]
+    channels: 3
+    format: "RGB"  # RGB, BGR, GRAY
+    normalization:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  
+  # 추론 설정
+  inference:
+    confidence_threshold: 0.5
+    nms_threshold: 0.4
+    max_detections: 100
+    batch_size: 1
+  
+  # 하드웨어 설정
+  hardware:
+    device: "auto"  # auto, cpu, cuda, mps
+    precision: "fp32"  # fp32, fp16, int8
+    providers: ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+# 클래스 정의
+classes:
+  0: "person"
+  1: "bicycle"
+  2: "car"
+  # ... 추가 클래스
+
+# 성능 벤치마크
+benchmark:
+  fps: 30.5
+  memory_usage: "2.1GB"
+  inference_time: "32.8ms"
+  accuracy: 0.89
+```
+
+### 2.4 데이터셋 설정 구조
+```yaml
+# datasets/ 폴더 내 설정 파일 구조
+dataset:
+  name: "face_dataset"
+  type: "classification"  # classification, detection, segmentation
+  domain: "face_recognition"
+  
+  # 경로 설정
+  paths:
+    root: "datasets/face"
+    raw: "datasets/face/raw"
+    processed: "datasets/face/processed"
+    annotations: "datasets/face/annotations"
+    metadata: "datasets/face/metadata"
+  
+  # 분할 설정
+  split:
+    train: 0.7
+    validation: 0.2
+    test: 0.1
+    random_seed: 42
+  
+  # 클래스 정보
+  classes:
+    happy: 0
+    sad: 1
+    angry: 2
+    neutral: 3
+    surprised: 4
+  
+  # 증강 설정
+  augmentation:
+    enabled: true
+    ratio: 2.0  # 원본 대비 증강 데이터 비율
+    options:
+      flip:
+        enabled: true
+        probability: 0.5
+      rotation:
+        enabled: true
+        angle_range: [-15, 15]
+      brightness:
+        enabled: true
+        factor_range: [0.8, 1.2]
+      zoom:
+        enabled: false
+        factor_range: [0.9, 1.1]
+  
+  # 전처리 설정
+  preprocessing:
+    resize: [224, 224]
+    normalize: true
+    clahe: false
+    face_alignment: true
+    crop_padding: 0.2
+
+# 통계 정보
+statistics:
+  total_samples: 10000
+  train_samples: 7000
+  val_samples: 2000
+  test_samples: 1000
+  class_distribution:
+    happy: 2500
+    sad: 2000
+    angry: 1800
+    neutral: 2200
+    surprised: 1500
+```
+
+## 3. 애플리케이션별 설정 분석
+
+### 3.1 공장 불량 검출 애플리케이션
+```yaml
+# apps/factory/factory_config.yaml
+application:
+  name: "factory_defect_monitoring"
+  type: "quality_control"
+  version: "1.0.0"
+
+# 불량 유형 정의
+defect_types:
+  scratch:
+    id: 0
+    color: [0, 0, 255]  # 빨간색
+    threshold: 0.3
+    severity: "medium"
+  dent:
+    id: 1
+    color: [0, 255, 0]  # 녹색
+    threshold: 0.4
+    severity: "high"
+  crack:
+    id: 2
+    color: [255, 0, 0]  # 파란색
+    threshold: 0.5
+    severity: "critical"
+  discoloration:
+    id: 3
+    color: [255, 255, 0]  # 청록색
+    threshold: 0.3
+    severity: "low"
+
+# 품질 관리 임계값
+quality_thresholds:
+  alert_threshold: 0.05      # 5% 불량률에서 경고
+  critical_threshold: 0.1    # 10% 불량률에서 심각 알림
+  sampling_rate: 1.0         # 100% 샘플링
+  inspection_interval: 30    # 30초마다 검사
+
+# 생산 라인 설정
+production_line:
+  line_id: "LINE_001"
+  camera_positions:
+    - position: "top"
+      camera_id: 0
+      resolution: [1920, 1080]
+    - position: "side"
+      camera_id: 1
+      resolution: [1280, 720]
+  
+  conveyor:
+    speed: 0.5  # m/s
+    width: 0.8  # m
+    height: 0.1 # m
+
+# 알림 설정
+notifications:
+  email:
+    enabled: true
+    recipients: ["quality@company.com", "manager@company.com"]
+    smtp_server: "smtp.company.com"
+  
+  dashboard:
+    enabled: true
+    update_interval: 5  # seconds
+    url: "http://dashboard.company.com/quality"
+  
+  sound_alert:
+    enabled: true
+    critical_sound: "sounds/critical_alert.wav"
+    warning_sound: "sounds/warning_alert.wav"
+```
+
+### 3.2 휴머노이드 상호작용 애플리케이션
+```yaml
+# apps/humanoid/humanoid_config.yaml
+application:
+  name: "humanoid_vision_hri"
+  type: "human_robot_interaction"
+  version: "1.0.0"
+
+# 인간 감지 설정
+human_detection:
+  face_detection:
+    model: "yolov8n-face"
+    confidence: 0.7
+    max_faces: 5
+  
+  emotion_recognition:
+    model: "emotion_classifier"
+    confidence: 0.6
+    emotions: ["happy", "sad", "angry", "neutral", "surprised"]
+  
+  gesture_recognition:
+    model: "gesture_classifier"
+    confidence: 0.5
+    gestures: ["wave", "point", "thumbs_up", "stop"]
+
+# 상호작용 규칙
+interaction_rules:
+  greeting:
+    trigger: "face_detected"
+    response: "wave_gesture"
+    cooldown: 30  # seconds
+  
+  emotion_response:
+    happy:
+      response: "smile_expression"
+      voice: "Hello! You look happy today!"
+    sad:
+      response: "concern_expression"
+      voice: "Is everything okay?"
+    angry:
+      response: "calm_gesture"
+      voice: "Let me help you feel better."
+
+# 로봇 행동 설정
+robot_behavior:
+  personal_space: 1.5  # meters
+  approach_speed: 0.3  # m/s
+  max_interaction_time: 300  # seconds
+  
+  expressions:
+    smile: "servo_positions_smile.json"
+    concern: "servo_positions_concern.json"
+    neutral: "servo_positions_neutral.json"
+  
+  gestures:
+    wave: "gesture_sequence_wave.json"
+    point: "gesture_sequence_point.json"
+    calm: "gesture_sequence_calm.json"
+
+# 음성 설정
+voice:
+  enabled: true
+  language: "ko-KR"
+  speed: 1.0
+  volume: 0.8
+  voice_id: "female_01"
+```
+
+## 4. 시스템 설정 분석
+
+### 4.1 로깅 설정
+```yaml
+# system/logging.yaml
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  
+  detailed:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(funcName)s - %(lineno)d - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  
+  json:
+    format: '{"timestamp": "%(asctime)s", "name": "%(name)s", "level": "%(levelname)s", "message": "%(message)s"}'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+  
+  file_info:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: standard
+    filename: data/logs/info.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf-8
+  
+  file_error:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: detailed
+    filename: data/logs/error.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf-8
+  
+  file_debug:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: detailed
+    filename: data/logs/debug.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 3
+    encoding: utf-8
+
+loggers:
+  "":  # root logger
+    level: INFO
+    handlers: [console, file_info, file_error]
+    propagate: false
+  
+  "features":
+    level: DEBUG
+    handlers: [console, file_debug]
+    propagate: false
+  
+  "modules":
+    level: INFO
+    handlers: [console, file_info]
+    propagate: false
+  
+  "applications":
+    level: INFO
+    handlers: [console, file_info, file_error]
+    propagate: false
+
+# 로그 정리 설정
+cleanup:
+  enabled: true
+  max_age_days: 30
+  max_size_mb: 1000
+  cleanup_schedule: "0 2 * * *"  # 매일 오전 2시
+```
+
+## 5. 스키마 정의 분석
+
+### 5.1 기본 스키마
+```yaml
+# schemas/base_schema.yaml
+$schema: "http://json-schema.org/draft-07/schema#"
+title: "Vision System Base Configuration Schema"
+type: object
+
+definitions:
+  version:
+    type: string
+    pattern: "^\\d+\\.\\d+\\.\\d+$"
+    description: "Semantic version string"
+  
+  meta:
+    type: object
+    properties:
+      lastModified:
+        type: string
+        format: date-time
+      description:
+        type: string
+        minLength: 1
+      status:
+        type: string
+        enum: ["active", "deprecated", "experimental"]
+      responsible:
+        type: object
+        properties:
+          team:
+            type: string
+          lead:
+            type: string
+    required: ["lastModified", "description", "status"]
+  
+  hardware:
+    type: object
+    properties:
+      gpu_enabled:
+        type: boolean
+      gpu_memory_limit:
+        type: string
+        pattern: "^\\d+GB$"
+      cpu_cores:
+        type: integer
+        minimum: 1
+        maximum: 128
+    required: ["gpu_enabled", "cpu_cores"]
+  
+  paths:
+    type: object
+    properties:
+      data_dir:
+        type: string
+      models_dir:
+        type: string
+      logs_dir:
+        type: string
+      temp_dir:
+        type: string
+    required: ["data_dir", "models_dir", "logs_dir"]
+
+properties:
+  version:
+    $ref: "#/definitions/version"
+  meta:
+    $ref: "#/definitions/meta"
+  hardware:
+    $ref: "#/definitions/hardware"
+  paths:
+    $ref: "#/definitions/paths"
+
+required: ["version", "meta"]
+```
+
+### 5.2 모델 스키마
+```yaml
+# schemas/model_schema.yaml
+$schema: "http://json-schema.org/draft-07/schema#"
+title: "Model Configuration Schema"
+type: object
+
+properties:
+  model:
+    type: object
+    properties:
+      name:
+        type: string
+        minLength: 1
+      type:
+        type: string
+        enum: ["detection", "classification", "segmentation", "regression"]
+      framework:
+        type: string
+        enum: ["pytorch", "tensorflow", "onnx", "opencv"]
+      
+      files:
+        type: object
+        properties:
+          weights:
+            type: string
+          config:
+            type: string
+          metadata:
+            type: string
+        required: ["weights"]
+      
+      input:
+        type: object
+        properties:
+          size:
+            type: array
+            items:
+              type: integer
+              minimum: 1
+            minItems: 2
+            maxItems: 3
+          channels:
+            type: integer
+            enum: [1, 3, 4]
+          format:
+            type: string
+            enum: ["RGB", "BGR", "GRAY"]
+        required: ["size", "channels", "format"]
+      
+      inference:
+        type: object
+        properties:
+          confidence_threshold:
+            type: number
+            minimum: 0
+            maximum: 1
+          nms_threshold:
+            type: number
+            minimum: 0
+            maximum: 1
+          max_detections:
+            type: integer
+            minimum: 1
+          batch_size:
+            type: integer
+            minimum: 1
+        required: ["confidence_threshold"]
+    
+    required: ["name", "type", "framework", "files", "input", "inference"]
+
+required: ["model"]
+```
+
+## 6. 설정 파일 검증 규칙
+
+### 6.1 파일 네이밍 규칙
+```python
+CONFIG_NAMING_RULES = {
+    'apps': {
+        'pattern': r'^[a-z_]+_config\.yaml$',
+        'examples': ['factory_config.yaml', 'humanoid_config.yaml']
+    },
+    'models': {
+        'pattern': r'^[a-z_]+_model\.yaml$',
+        'examples': ['face_detection_model.yaml', 'object_detection_model.yaml']
+    },
+    'datasets': {
+        'pattern': r'^[a-z_]+_dataset\.yaml$',
+        'examples': ['face_dataset.yaml', 'powerline_defect_dataset.yaml']
+    },
+    'environments': {
+        'pattern': r'^[a-z_]+_config\.yaml$',
+        'examples': ['development_config.yaml', 'production_config.yaml']
+    }
+}
+```
+
+### 6.2 설정 검증 함수
+```python
+def validate_config_structure(config_path, schema_path=None):
+    """
+    설정 파일 구조 검증
+    
+    Args:
+        config_path: 검증할 설정 파일 경로
+        schema_path: 스키마 파일 경로 (선택적)
+    
+    Returns:
+        검증 결과 딕셔너리
+    """
+    import yaml
+    import jsonschema
+    from pathlib import Path
+    
+    result = {
+        'valid': True,
+        'errors': [],
+        'warnings': [],
+        'info': {}
+    }
+    
+    try:
+        # YAML 파일 로드
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        
+        # 기본 구조 검증
+        if 'version' not in config:
+            result['errors'].append("Missing required field: version")
+            result['valid'] = False
+        
+        if 'meta' not in config:
+            result['errors'].append("Missing required field: meta")
+            result['valid'] = False
+        else:
+            meta = config['meta']
+            required_meta_fields = ['lastModified', 'description', 'status']
+            for field in required_meta_fields:
+                if field not in meta:
+                    result['errors'].append(f"Missing required meta field: {field}")
+                    result['valid'] = False
+        
+        # 스키마 검증 (제공된 경우)
+        if schema_path and Path(schema_path).exists():
+            with open(schema_path, 'r', encoding='utf-8') as f:
+                schema = yaml.safe_load(f)
+            
+            try:
+                jsonschema.validate(config, schema)
+                result['info']['schema_validation'] = 'passed'
+            except jsonschema.ValidationError as e:
+                result['errors'].append(f"Schema validation error: {e.message}")
+                result['valid'] = False
+        
+        # 파일 네이밍 검증
+        config_filename = Path(config_path).name
+        config_dir = Path(config_path).parent.name
+        
+        if config_dir in CONFIG_NAMING_RULES:
+            pattern = CONFIG_NAMING_RULES[config_dir]['pattern']
+            if not re.match(pattern, config_filename):
+                result['warnings'].append(f"Filename doesn't match pattern: {pattern}")
+        
+        result['info']['file_size'] = Path(config_path).stat().st_size
+        result['info']['config_keys'] = list(config.keys())
+        
+    except yaml.YAMLError as e:
+        result['errors'].append(f"YAML parsing error: {str(e)}")
+        result['valid'] = False
+    except FileNotFoundError:
+        result['errors'].append(f"Config file not found: {config_path}")
+        result['valid'] = False
+    except Exception as e:
+        result['errors'].append(f"Unexpected error: {str(e)}")
+        result['valid'] = False
+    
+    return result
+```
+
+## 7. 설정 관리 모범 사례
+
+### 7.1 환경별 설정 관리
+- 개발, 테스트, 운영 환경별로 별도 설정 파일 유지
+- 민감한 정보는 환경 변수 또는 별도 보안 파일로 관리
+- 설정 파일 버전 관리 및 변경 이력 추적
+
+### 7.2 설정 파일 보안
+- 데이터베이스 비밀번호, API 키 등은 평문 저장 금지
+- 설정 파일 접근 권한 제한
+- 설정 파일 암호화 고려
+
+### 7.3 설정 검증 자동화
+- CI/CD 파이프라인에 설정 검증 단계 포함
+- 스키마 기반 자동 검증
+- 설정 변경 시 자동 테스트 실행
+
+### 7.4 문서화 및 주석
+- 모든 설정 항목에 대한 명확한 설명 제공
+- 설정 변경이 시스템에 미치는 영향 문서화
+- 설정 파일 템플릿 및 예제 제공
+
+이러한 설정 파일 분석을 통해 프로젝트의 구성 관리 품질을 향상시킬 수 있습니다.

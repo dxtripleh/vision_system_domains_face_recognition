@@ -1,0 +1,887 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 대규모 배포 전략 (ENTERPRISE)
+
+## 🐳 컨테이너화 및 오케스트레이션
+
+### Docker 컨테이너 설계
+```dockerfile
+# Dockerfile.production
+FROM python:3.9-slim
+
+# 시스템 의존성 설치
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# OpenCV 최적화 빌드
+RUN pip install opencv-python-headless
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 요구사항 복사 및 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 애플리케이션 코드 복사
+COPY . .
+
+# 헬스체크 설정
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# 포트 노출
+EXPOSE 8000
+
+# 비루트 사용자로 실행
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# 애플리케이션 시작
+CMD ["uvicorn", "common.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+### Kubernetes 배포 매니페스트
+```yaml
+# k8s/vision-system-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vision-system
+  namespace: production
+  labels:
+    app: vision-system
+    version: v1.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: vision-system
+  template:
+    metadata:
+      labels:
+        app: vision-system
+        version: v1.0
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - vision-system
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: vision-system
+        image: vision-system:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: GPU_ENABLED
+          value: "true"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+            nvidia.com/gpu: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+        - name: config-volume
+          mountPath: /app/config
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-storage-pvc
+      - name: config-volume
+        configMap:
+          name: vision-config
+      imagePullSecrets:
+      - name: registry-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vision-system-service
+  namespace: production
+spec:
+  selector:
+    app: vision-system
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vision-system-ingress
+  namespace: production
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+spec:
+  tls:
+  - hosts:
+    - vision-api.company.com
+    secretName: vision-tls
+  rules:
+  - host: vision-api.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: vision-system-service
+            port:
+              number: 80
+```
+
+## 🔄 CI/CD 파이프라인
+
+### GitLab CI 파이프라인
+```yaml
+# .gitlab-ci.yml
+stages:
+  - test
+  - security
+  - build
+  - deploy-staging
+  - deploy-production
+
+variables:
+  DOCKER_REGISTRY: registry.company.com
+  IMAGE_NAME: vision-system
+  DOCKER_TLS_CERTDIR: "/certs"
+
+before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+test:
+  stage: test
+  image: python:3.9
+  services:
+    - docker:dind
+  script:
+    - pip install -r requirements.txt
+    - pytest tests/ --cov=domains --cov-report=xml
+    - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    - mypy domains/ shared/ common/
+  coverage: '/TOTAL.+?(\d+\%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+security_scan:
+  stage: security
+  image: python:3.9
+  script:
+    - pip install bandit safety
+    - bandit -r domains/ shared/ common/ -f json -o bandit-report.json
+    - safety check --json --output safety-report.json
+  artifacts:
+    reports:
+      sast: bandit-report.json
+    paths:
+      - safety-report.json
+  allow_failure: false
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -f Dockerfile.production -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:latest
+  only:
+    - main
+    - develop
+
+deploy_staging:
+  stage: deploy-staging
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl config use-context staging
+    - envsubst < k8s/vision-system-deployment.yaml | kubectl apply -f -
+    - kubectl rollout status deployment/vision-system -n staging
+  environment:
+    name: staging
+    url: https://vision-staging.company.com
+  only:
+    - develop
+
+deploy_production:
+  stage: deploy-production
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl config use-context production
+    - envsubst < k8s/vision-system-deployment.yaml | kubectl apply -f -
+    - kubectl rollout status deployment/vision-system -n production
+  environment:
+    name: production
+    url: https://vision-api.company.com
+  when: manual
+  only:
+    - main
+```
+
+## 🏗️ 인프라스트럭처 as Code
+
+### Terraform 인프라 정의
+```hcl
+# infrastructure/main.tf
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+# EKS 클러스터
+module "eks" {
+  source = "terraform-aws-modules/eks/aws"
+  
+  cluster_name    = "vision-system-cluster"
+  cluster_version = "1.28"
+  
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+  
+  enable_irsa = true
+  
+  node_groups = {
+    gpu_nodes = {
+      desired_capacity = 2
+      max_capacity     = 5
+      min_capacity     = 1
+      
+      instance_types = ["g4dn.xlarge"]
+      
+      k8s_labels = {
+        workload = "gpu-intensive"
+      }
+      
+      taints = {
+        gpu = {
+          key    = "nvidia.com/gpu"
+          value  = "true"
+          effect = "NO_SCHEDULE"
+        }
+      }
+    }
+    
+    cpu_nodes = {
+      desired_capacity = 3
+      max_capacity     = 10
+      min_capacity     = 2
+      
+      instance_types = ["m5.large", "m5.xlarge"]
+      
+      k8s_labels = {
+        workload = "general"
+      }
+    }
+  }
+}
+
+# VPC 설정
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+  
+  name = "vision-system-vpc"
+  cidr = "10.0.0.0/16"
+  
+  azs             = ["us-west-2a", "us-west-2b", "us-west-2c"]
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+  
+  enable_nat_gateway = true
+  enable_vpn_gateway = true
+  
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+  
+  tags = {
+    Terraform   = "true"
+    Environment = "production"
+    Project     = "vision-system"
+  }
+}
+
+# RDS 데이터베이스
+resource "aws_db_instance" "vision_db" {
+  identifier             = "vision-system-db"
+  engine                 = "postgresql"
+  engine_version         = "15.3"
+  instance_class         = "db.r5.large"
+  allocated_storage      = 100
+  max_allocated_storage  = 1000
+  
+  db_name  = "visiondb"
+  username = "visionuser"
+  password = var.db_password
+  
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.vision.name
+  
+  backup_retention_period = 7
+  backup_window          = "03:00-04:00"
+  maintenance_window     = "sun:04:00-sun:05:00"
+  
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+  
+  skip_final_snapshot = false
+  final_snapshot_identifier = "vision-db-final-snapshot"
+  
+  tags = {
+    Name = "vision-system-database"
+  }
+}
+
+# S3 버킷 (모델 및 데이터 저장)
+resource "aws_s3_bucket" "model_storage" {
+  bucket = "vision-system-models-${random_string.bucket_suffix.result}"
+  
+  tags = {
+    Name        = "Model Storage"
+    Environment = "production"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "model_storage" {
+  bucket = aws_s3_bucket.model_storage.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_encryption" "model_storage" {
+  bucket = aws_s3_bucket.model_storage.id
+  
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
+}
+
+# CloudWatch 로그 그룹
+resource "aws_cloudwatch_log_group" "vision_system" {
+  name              = "/aws/eks/vision-system"
+  retention_in_days = 30
+  
+  tags = {
+    Application = "vision-system"
+    Environment = "production"
+  }
+}
+
+# Application Load Balancer
+resource "aws_lb" "vision_alb" {
+  name               = "vision-system-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = module.vpc.public_subnets
+  
+  enable_deletion_protection = true
+  
+  tags = {
+    Name = "vision-system-alb"
+  }
+}
+
+# Auto Scaling 설정
+resource "aws_autoscaling_policy" "scale_up" {
+  name                   = "vision-scale-up"
+  scaling_adjustment     = 2
+  adjustment_type        = "ChangeInCapacity"
+  cooldown              = 300
+  autoscaling_group_name = module.eks.node_groups.cpu_nodes.asg_name
+}
+
+resource "aws_autoscaling_policy" "scale_down" {
+  name                   = "vision-scale-down"
+  scaling_adjustment     = -1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown              = 300
+  autoscaling_group_name = module.eks.node_groups.cpu_nodes.asg_name
+}
+
+# CloudWatch 알람
+resource "aws_cloudwatch_metric_alarm" "high_cpu" {
+  alarm_name          = "vision-high-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors ec2 cpu utilization"
+  alarm_actions       = [aws_autoscaling_policy.scale_up.arn]
+}
+```
+
+## 📊 로드 밸런싱 및 확장성
+
+### NGINX 설정
+```nginx
+# nginx.conf
+upstream vision_backend {
+    least_conn;
+    
+    server vision-pod-1:8000 max_fails=3 fail_timeout=30s;
+    server vision-pod-2:8000 max_fails=3 fail_timeout=30s;
+    server vision-pod-3:8000 max_fails=3 fail_timeout=30s;
+    
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name vision-api.company.com;
+    
+    # SSL 리다이렉트
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name vision-api.company.com;
+    
+    # SSL 설정
+    ssl_certificate /etc/ssl/certs/vision-api.crt;
+    ssl_certificate_key /etc/ssl/private/vision-api.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512;
+    ssl_prefer_server_ciphers off;
+    
+    # 보안 헤더
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options DENY;
+    add_header X-XSS-Protection "1; mode=block";
+    
+    # 요청 제한
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    limit_req zone=api burst=20 nodelay;
+    
+    # 업로드 크기 제한
+    client_max_body_size 50m;
+    
+    # 프록시 설정
+    location / {
+        proxy_pass http://vision_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # 타임아웃 설정
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # 헬스체크 엔드포인트
+    location /health {
+        access_log off;
+        proxy_pass http://vision_backend/health;
+    }
+    
+    # 정적 파일 캐싱
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+### HPA (Horizontal Pod Autoscaler) 설정
+```yaml
+# k8s/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vision-system-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vision-system
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: vision_processing_queue_length
+      target:
+        type: AverageValue
+        averageValue: "30"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
+```
+
+## 🔄 무중단 배포 전략
+
+### Blue-Green 배포
+```python
+# scripts/deployment/blue_green_deploy.py
+import subprocess
+import time
+import requests
+from typing import Dict, List
+
+class BlueGreenDeployment:
+    """Blue-Green 배포 관리"""
+    
+    def __init__(self, namespace: str = "production"):
+        self.namespace = namespace
+        self.current_color = self._get_current_color()
+        self.target_color = "green" if self.current_color == "blue" else "blue"
+    
+    def deploy(self, image_tag: str) -> bool:
+        """Blue-Green 배포 실행"""
+        try:
+            # 1. 새로운 환경(target) 배포
+            self._deploy_target_environment(image_tag)
+            
+            # 2. 헬스체크 대기
+            if not self._wait_for_health_check():
+                raise Exception("Health check failed for target environment")
+            
+            # 3. 트래픽 전환
+            self._switch_traffic()
+            
+            # 4. 이전 환경 정리 (선택적)
+            # self._cleanup_previous_environment()
+            
+            print(f"✓ Blue-Green deployment completed: {self.current_color} → {self.target_color}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Blue-Green deployment failed: {str(e)}")
+            self._rollback()
+            return False
+    
+    def _deploy_target_environment(self, image_tag: str):
+        """타겟 환경 배포"""
+        # Kubernetes 매니페스트 업데이트
+        manifest = f"""
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vision-system-{self.target_color}
+  namespace: {self.namespace}
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: vision-system
+      color: {self.target_color}
+  template:
+    metadata:
+      labels:
+        app: vision-system
+        color: {self.target_color}
+    spec:
+      containers:
+      - name: vision-system
+        image: vision-system:{image_tag}
+        ports:
+        - containerPort: 8000
+"""
+        
+        # 배포 실행
+        subprocess.run(
+            ["kubectl", "apply", "-f", "-"],
+            input=manifest.encode(),
+            check=True
+        )
+        
+        # 배포 완료 대기
+        subprocess.run([
+            "kubectl", "rollout", "status", 
+            f"deployment/vision-system-{self.target_color}",
+            "-n", self.namespace
+        ], check=True)
+    
+    def _wait_for_health_check(self, timeout: int = 300) -> bool:
+        """헬스체크 대기"""
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                # 타겟 환경의 파드 IP 조회
+                pods = self._get_pods_by_color(self.target_color)
+                
+                # 모든 파드가 healthy한지 확인
+                healthy_pods = 0
+                for pod in pods:
+                    if self._check_pod_health(pod):
+                        healthy_pods += 1
+                
+                if healthy_pods == len(pods) and len(pods) > 0:
+                    print(f"✓ All {len(pods)} pods are healthy")
+                    return True
+                
+                time.sleep(10)
+                
+            except Exception as e:
+                print(f"Health check error: {str(e)}")
+                time.sleep(10)
+        
+        return False
+    
+    def _switch_traffic(self):
+        """트래픽 전환"""
+        # 서비스 selector 업데이트
+        service_patch = f'''
+{{
+  "spec": {{
+    "selector": {{
+      "app": "vision-system",
+      "color": "{self.target_color}"
+    }}
+  }}
+}}
+'''
+        
+        subprocess.run([
+            "kubectl", "patch", "service", "vision-system-service",
+            "-n", self.namespace,
+            "--type", "merge",
+            "--patch", service_patch
+        ], check=True)
+        
+        print(f"✓ Traffic switched to {self.target_color} environment")
+
+# Canary 배포
+class CanaryDeployment:
+    """Canary 배포 관리"""
+    
+    def __init__(self, namespace: str = "production"):
+        self.namespace = namespace
+        self.canary_percentage = 10  # 초기 Canary 트래픽 비율
+    
+    def deploy(self, image_tag: str) -> bool:
+        """Canary 배포 실행"""
+        try:
+            # 1. Canary 환경 배포
+            self._deploy_canary(image_tag)
+            
+            # 2. 점진적 트래픽 증가
+            for percentage in [10, 25, 50, 75, 100]:
+                self._update_traffic_split(percentage)
+                
+                # 메트릭 모니터링
+                if not self._monitor_canary_metrics(percentage):
+                    raise Exception(f"Canary metrics failed at {percentage}%")
+                
+                time.sleep(300)  # 5분 대기
+            
+            # 3. Canary를 main으로 승격
+            self._promote_canary()
+            
+            print("✓ Canary deployment completed successfully")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Canary deployment failed: {str(e)}")
+            self._rollback_canary()
+            return False
+    
+    def _monitor_canary_metrics(self, percentage: int) -> bool:
+        """Canary 메트릭 모니터링"""
+        # Prometheus 메트릭 쿼리
+        metrics = {
+            'error_rate': self._get_error_rate('canary'),
+            'response_time': self._get_response_time('canary'),
+            'success_rate': self._get_success_rate('canary')
+        }
+        
+        # 임계값 확인
+        if metrics['error_rate'] > 0.05:  # 5% 이상 오류율
+            return False
+        
+        if metrics['response_time'] > 1000:  # 1초 이상 응답시간
+            return False
+        
+        if metrics['success_rate'] < 0.95:  # 95% 미만 성공률
+            return False
+        
+        print(f"✓ Canary metrics passed at {percentage}%: {metrics}")
+        return True
+```
+
+## 🔧 배포 자동화 스크립트
+
+### 배포 오케스트레이션
+```bash
+#!/bin/bash
+# scripts/deployment/deploy_production.sh
+
+set -e
+
+# 설정
+NAMESPACE="production"
+IMAGE_TAG=${1:-latest}
+DEPLOYMENT_STRATEGY=${2:-rolling}
+
+echo "🚀 Starting production deployment..."
+echo "📦 Image tag: $IMAGE_TAG"
+echo "🔄 Strategy: $DEPLOYMENT_STRATEGY"
+
+# 사전 체크
+echo "📋 Running pre-deployment checks..."
+./scripts/validation/validate_rules.py
+./scripts/validation/check_code_style.py
+./scripts/security/security_scan.sh
+
+# 데이터베이스 마이그레이션
+echo "💾 Running database migrations..."
+kubectl run migration-job \
+  --image=vision-system:$IMAGE_TAG \
+  --rm -i --restart=Never \
+  --command -- python scripts/database/migrate.py
+
+# 배포 전략 선택
+case $DEPLOYMENT_STRATEGY in
+  "blue-green")
+    echo "🔵🟢 Executing Blue-Green deployment..."
+    python scripts/deployment/blue_green_deploy.py --image-tag $IMAGE_TAG
+    ;;
+  "canary")
+    echo "🐤 Executing Canary deployment..."
+    python scripts/deployment/canary_deploy.py --image-tag $IMAGE_TAG
+    ;;
+  "rolling")
+    echo "🔄 Executing Rolling deployment..."
+    kubectl set image deployment/vision-system \
+      vision-system=vision-system:$IMAGE_TAG \
+      -n $NAMESPACE
+    kubectl rollout status deployment/vision-system -n $NAMESPACE
+    ;;
+  *)
+    echo "❌ Unknown deployment strategy: $DEPLOYMENT_STRATEGY"
+    exit 1
+    ;;
+esac
+
+# 배포 후 검증
+echo "✅ Running post-deployment verification..."
+./scripts/deployment/verify_deployment.py
+
+# 슬랙 알림
+curl -X POST -H 'Content-type: application/json' \
+  --data "{\"text\":\"✅ Vision System deployed successfully to production (${IMAGE_TAG})\"}" \
+  $SLACK_WEBHOOK_URL
+
+echo "🎉 Production deployment completed successfully!"
+```
+
+
+---
+
+**적용 시점**: 대규모 운영 환경 구축 시 (동시 사용자 100명 이상)
+**의존성**: Docker, Kubernetes, Terraform, Prometheus, Grafana
+**설정**: AWS/GCP/Azure 클라우드 인프라, CI/CD 파이프라인 구축 필요
+
+

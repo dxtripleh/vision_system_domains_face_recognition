@@ -1,0 +1,298 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Clean Slate 아키텍처 전략 (Clean Slate Architecture Strategy)
+
+## 🎯 목적
+
+Archive 구조에 의존하지 않고 **완전히 새로운 현대적 비전 시스템** 구축  
+**미래 확장성**과 **현대적 요구사항**을 모두 만족하는 아키텍처 설계
+
+## 🚀 **Clean Slate의 장점**
+
+### ✅ **기술 부채 제로**
+- 레거시 코드 없음
+- 구버전 호환성 고민 불필요
+- 현대적 패턴만 적용
+
+### ✅ **미래 지향적 설계**
+- VLM 통합 고려한 구조
+- 멀티모달 확장성 내장
+- 엣지-클라우드 하이브리드 지원
+- 도메인 독립적 아키텍처
+
+### ✅ **현대적 보안**
+- Security by Design
+- GDPR 네이티브 지원
+- Zero Trust 아키텍처
+- 생체정보 보호 내장
+
+## 🏗️ **새로운 아키텍처 설계**
+
+### 1️⃣ **Domain-Driven 구조 (현재 적용 중)**
+```
+vision_system/
+├── domains/                    # 도메인별 분리 (DDD 패턴)
+│   ├── face_recognition/       # 얼굴인식 도메인 (현재 개발 중)
+│   │   ├── core/              # 도메인 핵심 로직 (DDD Core)
+│   │   │   ├── entities/      # 엔티티 (Face, Person)
+│   │   │   ├── services/      # 도메인 서비스
+│   │   │   ├── repositories/  # 저장소 인터페이스
+│   │   │   └── value_objects/ # 값 객체
+│   │   ├── infrastructure/    # 인프라 계층
+│   │   │   ├── models/        # AI 모델 구현체
+│   │   │   ├── storage/       # 데이터 저장소
+│   │   │   └── detection_engines/ # 검출 엔진
+│   │   └── interfaces/        # 애플리케이션 인터페이스
+│   │       ├── api/           # REST API
+│   │       └── cli/           # CLI 인터페이스
+│   ├── factory_defect/        # 공장 불량 검출 도메인 (향후)
+│   └── powerline_inspection/  # 전선 검사 도메인 (향후)
+├── shared/                    # 공유 컴포넌트 (도메인 간 공통)
+│   ├── vision_core/          # 비전 핵심 알고리즘
+│   │   ├── detection/        # 검출 공통 기능
+│   │   ├── recognition/      # 인식 공통 기능
+│   │   ├── preprocessing/    # 전처리 공통 기능
+│   │   └── postprocessing/   # 후처리 공통 기능
+│   └── security/             # 보안 모듈 (GDPR 준수)
+│       ├── privacy/          # 개인정보 보호
+│       ├── encryption/       # 암호화
+│       └── authentication/   # 인증
+├── common/                   # 범용 유틸리티
+│   ├── config/              # 설정 관리
+│   ├── logging/             # 로깅 시스템
+│   └── utils/               # 범용 도구
+├── config/                  # 전역 설정 관리
+├── models/                  # 모델 저장소
+│   ├── weights/             # 모델 가중치
+│   ├── metadata/            # 모델 메타데이터
+│   └── configs/             # 모델 설정
+├── datasets/                # 학습 데이터 (ML 데이터셋)
+│   └── face_recognition/    # 도메인별 학습 데이터
+├── data/                    # 런타임 데이터
+│   ├── temp/                # 임시 파일
+│   ├── logs/                # 로그 파일
+│   └── output/              # 결과물
+└── scripts/                 # 유틸리티 스크립트
+    ├── data_processing/     # 데이터 처리
+    ├── training/            # 모델 훈련
+    └── evaluation/          # 평가
+```
+
+### 2️⃣ **마이크로서비스 기반 구조 (향후 확장)**
+```python
+# 서비스별 독립적 구조 (향후 확장 시)
+MICROSERVICES_ARCHITECTURE = {
+    "face_recognition_service": {
+        "port": 8001,
+        "dependencies": ["model_registry", "security_service"],
+        "scaling": "horizontal",
+        "deployment": "containerized"
+    },
+    "factory_defect_service": {
+        "port": 8002, 
+        "dependencies": ["model_registry", "data_pipeline"],
+        "scaling": "horizontal",
+        "deployment": "containerized"
+    },
+    "powerline_inspection_service": {
+        "port": 8003,
+        "dependencies": ["model_registry", "sensor_fusion"],
+        "scaling": "horizontal", 
+        "deployment": "containerized"
+    },
+    "shared_vision_service": {
+        "port": 8100,
+        "dependencies": ["model_registry"],
+        "scaling": "vertical",
+        "deployment": "shared"
+    }
+}
+```
+
+### 3️⃣ **플러그인 아키텍처 (도메인 확장)**
+```python
+# 확장 가능한 도메인 플러그인 시스템
+class VisionDomainPlugin:
+    """비전 도메인 플러그인 기본 인터페이스"""
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.name = self.__class__.__name__
+        
+    def initialize(self) -> bool:
+        """도메인 플러그인 초기화"""
+        raise NotImplementedError
+        
+    def process(self, input_data: Any) -> Any:
+        """데이터 처리"""
+        raise NotImplementedError
+        
+    def cleanup(self) -> None:
+        """리소스 정리"""
+        raise NotImplementedError
+
+class FaceRecognitionDomain(VisionDomainPlugin):
+    """얼굴인식 도메인 플러그인"""
+    
+    def initialize(self) -> bool:
+        self.detector = self._load_detector()
+        self.recognizer = self._load_recognizer()
+        return True
+        
+    def process(self, image: np.ndarray) -> Dict:
+        faces = self.detector.detect(image)
+        embeddings = self.recognizer.recognize(faces)
+        return {"faces": faces, "embeddings": embeddings}
+
+class FactoryDefectDomain(VisionDomainPlugin):
+    """공장 불량 검출 도메인 플러그인 (향후)"""
+    
+    def initialize(self) -> bool:
+        self.detector = self._load_defect_detector()
+        self.classifier = self._load_defect_classifier()
+        return True
+        
+    def process(self, image: np.ndarray) -> Dict:
+        defects = self.detector.detect(image)
+        classifications = self.classifier.classify(defects)
+        return {"defects": defects, "classifications": classifications}
+
+# 도메인 레지스트리
+DOMAIN_REGISTRY = {
+    "face_recognition": FaceRecognitionDomain,
+    "factory_defect": FactoryDefectDomain,
+    "powerline_inspection": PowerlineInspectionDomain
+}
+```
+
+## 🔧 **현대적 공통 모듈 설계**
+
+### 1️⃣ **Shared/Vision_Core (핵심 비전 알고리즘)**
+```
+shared/vision_core/
+├── __init__.py
+├── detection/
+│   ├── __init__.py
+│   ├── base_detector.py          # 추상 검출기
+│   ├── multi_backend_detector.py # 다중 백엔드 지원
+│   ├── face_detector.py          # 얼굴 검출
+│   ├── object_detector.py        # 객체 검출
+│   └── quality_assessor.py       # 품질 평가
+├── recognition/
+│   ├── __init__.py
+│   ├── base_recognizer.py        # 추상 인식기
+│   ├── face_embedder.py          # 얼굴 임베딩
+│   ├── face_matcher.py           # 얼굴 매칭
+│   └── similarity_matcher.py     # 유사도 매칭
+├── preprocessing/
+│   ├── __init__.py
+│   ├── image_processor.py        # 이미지 전처리
+│   ├── face_aligner.py           # 얼굴 정렬
+│   ├── augmentation.py           # 데이터 증강
+│   └── normalization.py          # 정규화
+└── postprocessing/
+    ├── __init__.py
+    ├── nms_utils.py              # Non-Maximum Suppression
+    ├── filtering.py              # 결과 필터링
+    └── visualization.py          # 시각화
+```
+
+### 2️⃣ **Shared/Security (보안 모듈)**
+```
+shared/security/
+├── __init__.py
+├── privacy/
+│   ├── __init__.py
+│   ├── data_anonymizer.py        # 데이터 익명화
+│   ├── gdpr_compliance.py        # GDPR 준수
+│   └── consent_manager.py        # 동의 관리
+├── encryption/
+│   ├── __init__.py
+│   ├── data_encryption.py        # 데이터 암호화
+│   ├── model_encryption.py       # 모델 암호화
+│   └── stream_encryption.py      # 스트림 암호화
+├── authentication/
+│   ├── __init__.py
+│   ├── jwt_manager.py            # JWT 관리
+│   ├── api_key_manager.py        # API 키 관리
+│   └── biometric_auth.py         # 생체 인증
+└── audit/
+    ├── __init__.py
+    ├── audit_logger.py           # 감사 로깅
+    └── compliance_tracker.py     # 규정 준수 추적
+```
+
+## 🔄 **도메인 확장 전략**
+
+### Phase 1: 얼굴인식 도메인 구축 (현재)
+- ✅ DDD 기반 core 구조 완성
+- ✅ Infrastructure 계층 구현
+- ✅ Interfaces 계층 구현
+- 🔄 실제 AI 모델 통합 (진행 중)
+
+### Phase 2: 공장 불량 검출 도메인 추가 (향후)
+- 새로운 도메인 폴더 생성: `domains/factory_defect/`
+- 기존 shared 모듈 재사용
+- 도메인별 특화 기능 개발
+
+### Phase 3: 전선 검사 도메인 추가 (향후)
+- 새로운 도메인 폴더 생성: `domains/powerline_inspection/`
+- 센서 융합 기능 추가
+- 드론/로봇 통합 인터페이스
+
+### Phase 4: VLM 통합 및 멀티모달 확장 (향후)
+- VLM 서비스 추가: `shared/vlm_core/`
+- 멀티모달 처리 파이프라인
+- 자연어 인터페이스 통합
+
+## 🎯 **아키텍처 원칙**
+
+### 1️⃣ **도메인 독립성**
+- 각 도메인은 완전히 독립적으로 개발/배포 가능
+- 도메인 간 직접 의존성 금지
+- 공통 기능은 shared 모듈을 통해서만 공유
+
+### 2️⃣ **계층별 책임 분리**
+- **Core**: 비즈니스 로직 (도메인 규칙)
+- **Infrastructure**: 기술적 구현 (AI 모델, 데이터베이스)
+- **Interfaces**: 외부 통신 (API, CLI)
+
+### 3️⃣ **확장성 우선**
+- 새로운 도메인 추가 시 기존 코드 변경 최소화
+- 플러그인 방식으로 기능 확장
+- 마이크로서비스 전환 가능한 구조
+
+### 4️⃣ **보안 내장**
+- 모든 계층에서 보안 고려
+- GDPR 준수 기본 내장
+- 개인정보 보호 자동화
+
+## 🚀 **Clean Slate 구현 로드맵**
+
+### Week 0-2: 기반 구조 완성 (완료)
+- ✅ 도메인 구조 설계
+- ✅ DDD 기반 core 구조
+- ✅ 기본 엔티티 정의
+
+### Week 3-4: 첫 번째 도메인 완성 (진행 중)
+- 🔄 얼굴인식 AI 모델 통합
+- 🔄 실제 데이터 처리 파이프라인
+- 🔄 API 인터페이스 구현
+
+### Week 5-8: 확장성 검증
+- 두 번째 도메인 추가로 구조 검증
+- Shared 모듈 최적화
+- 성능 및 보안 강화
+
+### Week 9-12: 프로덕션 준비
+- 모니터링 시스템 통합
+- CI/CD 파이프라인 구축
+- 문서화 완성
+
+이 Clean Slate 아키텍처는 **현재 개발 중인 구조를 기반**으로 하여 미래 확장성을 보장하면서도 **기술 부채 없는 깨끗한 시작**을 제공합니다.
+
+
+

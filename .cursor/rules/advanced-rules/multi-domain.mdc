@@ -1,0 +1,647 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 다중 도메인 관리 (ADVANCED)
+
+## 🏗️ 도메인 확장 전략
+
+### 새로운 도메인 추가 절차
+```python
+# 도메인 추가 시 체크리스트
+DOMAIN_ADDITION_CHECKLIST = {
+    'preparation': [
+        'domain_requirements_analysis',      # 도메인 요구사항 분석
+        'architecture_design',              # 아키텍처 설계
+        'data_strategy_planning',           # 데이터 전략 계획
+        'integration_points_identification' # 통합 지점 식별
+    ],
+    'implementation': [
+        'domain_structure_creation',        # 도메인 구조 생성
+        'core_entities_definition',         # 핵심 엔티티 정의
+        'services_implementation',          # 서비스 구현
+        'infrastructure_setup',             # 인프라 설정
+        'interfaces_development'            # 인터페이스 개발
+    ],
+    'integration': [
+        'shared_modules_extension',         # 공유 모듈 확장
+        'communication_channels_setup',     # 통신 채널 설정
+        'event_system_integration',         # 이벤트 시스템 통합
+        'data_pipeline_connection'          # 데이터 파이프라인 연결
+    ],
+    'validation': [
+        'unit_tests_creation',              # 단위 테스트 생성
+        'integration_tests_development',    # 통합 테스트 개발
+        'performance_testing',              # 성능 테스트
+        'end_to_end_testing'               # 종단간 테스트
+    ]
+}
+
+def create_new_domain(domain_name: str, domain_type: str):
+    """새로운 도메인 생성"""
+    
+    # 1. 도메인 디렉토리 구조 생성
+    domain_path = f"domains/{domain_name}"
+    
+    structure = {
+        'core': ['entities', 'services', 'value_objects'],
+        'infrastructure': ['models', 'storage', 'external_apis'],
+        'interfaces': ['api', 'cli'],
+        'runners': ['training', 'inference', 'demo']
+    }
+    
+    for layer, subdirs in structure.items():
+        layer_path = os.path.join(domain_path, layer)
+        os.makedirs(layer_path, exist_ok=True)
+        
+        # __init__.py 파일 생성
+        with open(os.path.join(layer_path, '__init__.py'), 'w') as f:
+            f.write(f'"""Domain: {domain_name} - Layer: {layer}"""\n')
+        
+        for subdir in subdirs:
+            subdir_path = os.path.join(layer_path, subdir)
+            os.makedirs(subdir_path, exist_ok=True)
+            
+            with open(os.path.join(subdir_path, '__init__.py'), 'w') as f:
+                f.write(f'"""Domain: {domain_name} - {layer}.{subdir}"""\n')
+    
+    # 2. 도메인별 설정 파일 생성
+    create_domain_config(domain_name, domain_type)
+    
+    # 3. README 파일 생성
+    create_domain_readme(domain_name, domain_type)
+    
+    print(f"✓ Domain '{domain_name}' created successfully")
+```
+
+### 다중 도메인 확장 계획
+```python
+# 향후 도메인 확장 로드맵
+DOMAIN_EXPANSION_ROADMAP = {
+    'factory_defect': {
+        'priority': 'high',
+        'estimated_timeline': '3-4 months',
+        'dependencies': ['vision_core', 'monitoring_system'],
+        'requirements': {
+            'hardware': ['industrial_cameras', 'lighting_system'],
+            'models': ['defect_detection', 'classification'],
+            'data': ['factory_samples', 'defect_annotations']
+        },
+        'integration_points': [
+            'shared.vision_core.detection',
+            'shared.vision_core.preprocessing',
+            'quality_metrics_tracking'
+        ]
+    },
+    'powerline_inspection': {
+        'priority': 'medium',
+        'estimated_timeline': '4-6 months',
+        'dependencies': ['vision_core', 'drone_integration'],
+        'requirements': {
+            'hardware': ['drone_cameras', 'gps_module', 'thermal_camera'],
+            'models': ['powerline_detection', 'defect_classification', 'thermal_analysis'],
+            'data': ['aerial_images', 'thermal_data', 'gps_coordinates']
+        },
+        'integration_points': [
+            'shared.vision_core.detection',
+            'shared.vision_core.tracking',
+            'geolocation_services'
+        ]
+    },
+    'medical_imaging': {
+        'priority': 'low',
+        'estimated_timeline': '6-8 months',
+        'dependencies': ['vision_core', 'security_enhanced', 'privacy_compliance'],
+        'requirements': {
+            'hardware': ['medical_scanners', 'dicom_compatible'],
+            'models': ['anomaly_detection', 'segmentation', 'diagnosis_support'],
+            'data': ['medical_images', 'anonymized_datasets', 'expert_annotations']
+        },
+        'integration_points': [
+            'shared.vision_core.preprocessing',
+            'shared.security.gdpr_compliance',
+            'medical_data_protection'
+        ]
+    }
+}
+```
+
+## 🔗 도메인 간 통신 시스템
+
+### 이벤트 기반 통신
+```python
+# shared/communication/event_bus.py
+from abc import ABC, abstractmethod
+from typing import Dict, List, Callable, Any
+import asyncio
+import json
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class DomainEvent:
+    """도메인 이벤트 기본 클래스"""
+    event_id: str
+    domain: str
+    event_type: str
+    data: Dict[str, Any]
+    timestamp: datetime
+    version: str = "1.0"
+
+class EventHandler(ABC):
+    """이벤트 핸들러 추상 클래스"""
+    
+    @abstractmethod
+    async def handle(self, event: DomainEvent) -> None:
+        pass
+
+class EventBus:
+    """도메인 간 이벤트 버스"""
+    
+    def __init__(self):
+        self.handlers: Dict[str, List[EventHandler]] = {}
+        self.event_store: List[DomainEvent] = []
+        
+    def subscribe(self, event_type: str, handler: EventHandler):
+        """이벤트 구독"""
+        if event_type not in self.handlers:
+            self.handlers[event_type] = []
+        self.handlers[event_type].append(handler)
+    
+    async def publish(self, event: DomainEvent):
+        """이벤트 발행"""
+        # 이벤트 저장
+        self.event_store.append(event)
+        
+        # 핸들러들에게 이벤트 전달
+        if event.event_type in self.handlers:
+            tasks = [
+                handler.handle(event) 
+                for handler in self.handlers[event.event_type]
+            ]
+            await asyncio.gather(*tasks, return_exceptions=True)
+    
+    def get_events_by_domain(self, domain: str) -> List[DomainEvent]:
+        """도메인별 이벤트 조회"""
+        return [event for event in self.event_store if event.domain == domain]
+
+# 이벤트 버스 싱글톤 인스턴스
+event_bus = EventBus()
+```
+
+### 도메인별 이벤트 정의
+```python
+# 얼굴인식 도메인 이벤트
+class FaceDetectedEvent(DomainEvent):
+    """얼굴 감지 이벤트"""
+    
+    def __init__(self, face_data: Dict):
+        super().__init__(
+            event_id=f"face_detected_{int(time.time())}",
+            domain="face_recognition",
+            event_type="face_detected",
+            data=face_data,
+            timestamp=datetime.now()
+        )
+
+class PersonRecognizedEvent(DomainEvent):
+    """인물 인식 이벤트"""
+    
+    def __init__(self, person_data: Dict):
+        super().__init__(
+            event_id=f"person_recognized_{int(time.time())}",
+            domain="face_recognition",
+            event_type="person_recognized",
+            data=person_data,
+            timestamp=datetime.now()
+        )
+
+# 공장 불량 검출 도메인 이벤트 (향후)
+class DefectDetectedEvent(DomainEvent):
+    """불량 감지 이벤트"""
+    
+    def __init__(self, defect_data: Dict):
+        super().__init__(
+            event_id=f"defect_detected_{int(time.time())}",
+            domain="factory_defect",
+            event_type="defect_detected",
+            data=defect_data,
+            timestamp=datetime.now()
+        )
+
+# 전선 검사 도메인 이벤트 (향후)
+class PowerlineAnomalyEvent(DomainEvent):
+    """전선 이상 감지 이벤트"""
+    
+    def __init__(self, anomaly_data: Dict):
+        super().__init__(
+            event_id=f"powerline_anomaly_{int(time.time())}",
+            domain="powerline_inspection",
+            event_type="powerline_anomaly",
+            data=anomaly_data,
+            timestamp=datetime.now()
+        )
+```
+
+### 도메인 간 데이터 공유
+```python
+# shared/data/domain_data_manager.py
+class DomainDataManager:
+    """도메인 간 데이터 공유 관리"""
+    
+    def __init__(self):
+        self.shared_cache = {}
+        self.data_contracts = {}
+    
+    def register_data_contract(self, contract_name: str, schema: Dict):
+        """데이터 계약 등록"""
+        self.data_contracts[contract_name] = schema
+    
+    def share_data(self, contract_name: str, data: Dict, source_domain: str):
+        """데이터 공유"""
+        if contract_name not in self.data_contracts:
+            raise ValueError(f"Unknown data contract: {contract_name}")
+        
+        # 스키마 검증
+        if not self._validate_schema(data, self.data_contracts[contract_name]):
+            raise ValueError("Data does not match contract schema")
+        
+        # 공유 캐시에 저장
+        self.shared_cache[contract_name] = {
+            'data': data,
+            'source_domain': source_domain,
+            'timestamp': datetime.now()
+        }
+    
+    def get_shared_data(self, contract_name: str) -> Dict:
+        """공유 데이터 조회"""
+        if contract_name not in self.shared_cache:
+            return None
+        return self.shared_cache[contract_name]
+    
+    def _validate_schema(self, data: Dict, schema: Dict) -> bool:
+        """스키마 검증"""
+        # 간단한 스키마 검증 구현
+        for field, field_type in schema.items():
+            if field not in data:
+                return False
+            if not isinstance(data[field], field_type):
+                return False
+        return True
+
+# 데이터 계약 정의
+DATA_CONTRACTS = {
+    'detected_object': {
+        'bbox': list,           # [x, y, width, height]
+        'confidence': float,    # 0.0 ~ 1.0
+        'class_name': str,      # 객체 클래스명
+        'timestamp': str        # ISO 8601 형식
+    },
+    'processing_result': {
+        'success': bool,        # 처리 성공 여부
+        'processing_time': float, # 처리 시간 (초)
+        'result_data': dict,    # 결과 데이터
+        'error_message': str    # 에러 메시지 (있는 경우)
+    },
+    'quality_metrics': {
+        'accuracy': float,      # 정확도
+        'precision': float,     # 정밀도
+        'recall': float,        # 재현율
+        'f1_score': float      # F1 스코어
+    }
+}
+```
+
+## 🔄 공유 모듈 확장 관리
+
+### Shared 모듈 확장 전략
+```python
+# shared 모듈 확장 계획
+SHARED_MODULE_EXPANSION = {
+    'vision_core': {
+        'current_modules': [
+            'detection',           # 객체/얼굴 검출
+            'recognition',         # 인식
+            'preprocessing',       # 전처리
+            'postprocessing'       # 후처리
+        ],
+        'planned_modules': [
+            'tracking',           # 객체 추적 (factory_defect용)
+            'pose_estimation',    # 자세 추정 (powerline_inspection용)
+            'thermal_analysis',   # 열화상 분석 (powerline_inspection용)
+            'medical_processing'  # 의료 영상 처리 (medical_imaging용)
+        ]
+    },
+    'communication': {
+        'current_modules': [
+            'event_bus',          # 이벤트 버스
+            'data_manager'        # 데이터 관리
+        ],
+        'planned_modules': [
+            'message_queue',      # 메시지 큐 (대용량 처리용)
+            'real_time_sync',     # 실시간 동기화 (다중 카메라용)
+            'distributed_cache'   # 분산 캐시 (확장성용)
+        ]
+    },
+    'quality': {
+        'current_modules': [],
+        'planned_modules': [
+            'metrics_aggregator', # 메트릭 수집기
+            'quality_dashboard',  # 품질 대시보드
+            'alert_system',       # 알림 시스템
+            'reporting'           # 리포팅 시스템
+        ]
+    }
+}
+
+def extend_shared_module(module_name: str, new_component: str):
+    """공유 모듈 확장"""
+    
+    # 1. 새로운 컴포넌트 디렉토리 생성
+    component_path = f"shared/{module_name}/{new_component}"
+    os.makedirs(component_path, exist_ok=True)
+    
+    # 2. __init__.py 파일 생성
+    init_file = os.path.join(component_path, '__init__.py')
+    with open(init_file, 'w') as f:
+        f.write(f'"""Shared module: {module_name}.{new_component}"""\n')
+    
+    # 3. 기본 구현 파일 생성
+    impl_file = os.path.join(component_path, f'{new_component}.py')
+    with open(impl_file, 'w') as f:
+        f.write(generate_component_template(module_name, new_component))
+    
+    # 4. 테스트 파일 생성
+    test_dir = f"tests/shared/{module_name}"
+    os.makedirs(test_dir, exist_ok=True)
+    
+    test_file = os.path.join(test_dir, f'test_{new_component}.py')
+    with open(test_file, 'w') as f:
+        f.write(generate_test_template(module_name, new_component))
+    
+    print(f"✓ Shared module component '{module_name}.{new_component}' created")
+
+def generate_component_template(module_name: str, component_name: str) -> str:
+    """컴포넌트 템플릿 생성"""
+    template = f'''#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+{module_name}.{component_name} 모듈
+
+이 모듈은 {component_name} 기능을 제공합니다.
+"""
+
+import logging
+from typing import Dict, List, Optional, Any
+
+logger = logging.getLogger(__name__)
+
+class {component_name.title().replace('_', '')}:
+    """{ component_name.replace('_', ' ').title()} 클래스"""
+    
+    def __init__(self):
+        self.initialized = False
+        self._setup()
+    
+    def _setup(self):
+        """초기 설정"""
+        logger.info(f"Initializing {{self.__class__.__name__}}")
+        self.initialized = True
+    
+    def process(self, data: Any) -> Any:
+        """메인 처리 메서드"""
+        if not self.initialized:
+            raise RuntimeError("Component not initialized")
+        
+        # 구현 필요
+        raise NotImplementedError("Subclass must implement process method")
+
+# 팩토리 함수
+def create_{component_name}() -> {component_name.title().replace('_', '')}:
+    """{ component_name.replace('_', ' ').title()} 인스턴스 생성"""
+    return {component_name.title().replace('_', '')}()
+'''
+    return template
+```
+
+## 📊 다중 도메인 메트릭 관리
+
+### 통합 메트릭 시스템
+```python
+# shared/quality/metrics_aggregator.py
+class DomainMetricsAggregator:
+    """도메인별 메트릭 통합 관리"""
+    
+    def __init__(self):
+        self.domain_metrics = {}
+        self.metric_definitions = {}
+    
+    def register_domain_metrics(self, domain: str, metrics_config: Dict):
+        """도메인별 메트릭 등록"""
+        self.domain_metrics[domain] = {
+            'config': metrics_config,
+            'current_values': {},
+            'history': []
+        }
+    
+    def update_metric(self, domain: str, metric_name: str, value: float):
+        """메트릭 값 업데이트"""
+        if domain not in self.domain_metrics:
+            raise ValueError(f"Domain {domain} not registered")
+        
+        self.domain_metrics[domain]['current_values'][metric_name] = value
+        self.domain_metrics[domain]['history'].append({
+            'metric': metric_name,
+            'value': value,
+            'timestamp': datetime.now()
+        })
+    
+    def get_cross_domain_summary(self) -> Dict:
+        """도메인 간 메트릭 요약"""
+        summary = {
+            'total_domains': len(self.domain_metrics),
+            'active_domains': 0,
+            'overall_health': 'healthy',
+            'domain_status': {}
+        }
+        
+        for domain, metrics in self.domain_metrics.items():
+            domain_health = self._calculate_domain_health(domain, metrics)
+            summary['domain_status'][domain] = domain_health
+            
+            if domain_health['status'] == 'active':
+                summary['active_domains'] += 1
+        
+        # 전체 시스템 건강도 계산
+        if summary['active_domains'] == 0:
+            summary['overall_health'] = 'inactive'
+        elif any(status['health'] == 'critical' for status in summary['domain_status'].values()):
+            summary['overall_health'] = 'critical'
+        elif any(status['health'] == 'warning' for status in summary['domain_status'].values()):
+            summary['overall_health'] = 'warning'
+        
+        return summary
+    
+    def _calculate_domain_health(self, domain: str, metrics: Dict) -> Dict:
+        """도메인 건강도 계산"""
+        current_values = metrics['current_values']
+        config = metrics['config']
+        
+        health_score = 1.0
+        status = 'active'
+        issues = []
+        
+        for metric_name, thresholds in config.get('thresholds', {}).items():
+            if metric_name in current_values:
+                value = current_values[metric_name]
+                
+                if 'min' in thresholds and value < thresholds['min']:
+                    health_score *= 0.7
+                    issues.append(f"{metric_name} below minimum: {value} < {thresholds['min']}")
+                
+                if 'max' in thresholds and value > thresholds['max']:
+                    health_score *= 0.7
+                    issues.append(f"{metric_name} above maximum: {value} > {thresholds['max']}")
+        
+        # 건강도 분류
+        if health_score >= 0.8:
+            health = 'healthy'
+        elif health_score >= 0.6:
+            health = 'warning'
+        else:
+            health = 'critical'
+        
+        return {
+            'status': status,
+            'health': health,
+            'score': health_score,
+            'issues': issues,
+            'metrics_count': len(current_values)
+        }
+
+# 도메인별 메트릭 설정 예시
+DOMAIN_METRICS_CONFIG = {
+    'face_recognition': {
+        'thresholds': {
+            'fps': {'min': 15.0, 'max': 60.0},
+            'accuracy': {'min': 0.85, 'max': 1.0},
+            'processing_time_ms': {'min': 0.0, 'max': 100.0}
+        },
+        'alerts': {
+            'low_fps': {'condition': 'fps < 15', 'severity': 'warning'},
+            'high_latency': {'condition': 'processing_time_ms > 100', 'severity': 'critical'}
+        }
+    },
+    'factory_defect': {  # 향후
+        'thresholds': {
+            'defect_rate': {'min': 0.0, 'max': 0.05},
+            'false_positive_rate': {'min': 0.0, 'max': 0.02},
+            'throughput_per_hour': {'min': 100.0, 'max': 1000.0}
+        },
+        'alerts': {
+            'high_defect_rate': {'condition': 'defect_rate > 0.05', 'severity': 'critical'},
+            'low_throughput': {'condition': 'throughput_per_hour < 100', 'severity': 'warning'}
+        }
+    }
+}
+```
+
+## 🔧 도메인 독립성 보장
+
+### 의존성 검증 시스템
+```python
+# scripts/validation/check_domain_independence.py
+def validate_domain_independence():
+    """도메인 독립성 검증"""
+    
+    violations = []
+    
+    # 1. 직접 import 검증
+    direct_import_violations = check_direct_domain_imports()
+    violations.extend(direct_import_violations)
+    
+    # 2. 순환 의존성 검증
+    circular_dependencies = check_circular_dependencies()
+    violations.extend(circular_dependencies)
+    
+    # 3. 공유 모듈 사용 검증
+    shared_module_violations = check_shared_module_usage()
+    violations.extend(shared_module_violations)
+    
+    # 4. 리포트 생성
+    generate_independence_report(violations)
+    
+    return len(violations) == 0
+
+def check_direct_domain_imports():
+    """도메인 간 직접 import 검사"""
+    violations = []
+    
+    for domain_dir in os.listdir('domains/'):
+        if not os.path.isdir(f'domains/{domain_dir}'):
+            continue
+        
+        for py_file in Path(f'domains/{domain_dir}').rglob('*.py'):
+            with open(py_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # domains.other_domain import 패턴 검사
+            import_pattern = r'from\s+domains\.([^.]+)'
+            matches = re.findall(import_pattern, content)
+            
+            for imported_domain in matches:
+                if imported_domain != domain_dir:
+                    violations.append({
+                        'type': 'direct_domain_import',
+                        'file': str(py_file),
+                        'source_domain': domain_dir,
+                        'target_domain': imported_domain,
+                        'severity': 'critical'
+                    })
+    
+    return violations
+
+def check_circular_dependencies():
+    """순환 의존성 검사"""
+    # 간단한 순환 의존성 검사 구현
+    # 실제로는 더 정교한 그래프 분석이 필요
+    return []
+
+def generate_independence_report(violations):
+    """독립성 검증 리포트 생성"""
+    report = {
+        'timestamp': datetime.now().isoformat(),
+        'total_violations': len(violations),
+        'violations_by_type': {},
+        'violations': violations
+    }
+    
+    # 유형별 위반 수 집계
+    for violation in violations:
+        vtype = violation['type']
+        if vtype not in report['violations_by_type']:
+            report['violations_by_type'][vtype] = 0
+        report['violations_by_type'][vtype] += 1
+    
+    # 리포트 저장
+    with open('data/runtime/logs/domain_independence_report.json', 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    # 콘솔 출력
+    if violations:
+        print(f"❌ Found {len(violations)} domain independence violations")
+        for violation in violations:
+            print(f"  - {violation['type']}: {violation['file']}")
+    else:
+        print("✓ Domain independence validation passed")
+```
+
+
+---
+
+**적용 시점**: factory_defect 또는 powerline_inspection 도메인 추가 시
+**의존성**: `pip install asyncio dataclasses`
+**설정**: 이벤트 버스, 데이터 계약, 메트릭 정의 필요
+
+

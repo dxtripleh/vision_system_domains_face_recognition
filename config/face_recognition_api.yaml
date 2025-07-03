@@ -1,0 +1,214 @@
+# Face Recognition API Configuration
+# Updated for new model architecture: RetinaFace MobileNet0.25 -> MobileFaceNet -> OpenCV Haar Cascade
+
+version: "1.0.0"
+meta:
+  description: "Face Recognition API Configuration with ONNX Runtime optimization"
+  lastModified: "2025-07-03T00:00:00Z"
+  status: "active"
+
+# Model Configuration
+models:
+  # Primary Detection Model (1st choice)
+  detection:
+    primary:
+      name: "retinaface_mobilenet025"
+      type: "onnx"
+      path: "models/weights/face_detection_retinaface_mobilenet025_20250703.onnx"
+      engine: "onnxruntime"
+      device: "auto"  # auto-detect CPU/GPU
+      input_size: [640, 640]
+      confidence_threshold: 0.5
+      nms_threshold: 0.4
+      max_faces: 10
+      priority: 1
+    
+    # Secondary Detection Model (2nd choice)
+    secondary:
+      name: "mobilefacenet"
+      type: "onnx"
+      path: "models/weights/face_detection_mobilefacenet_20250703.onnx"
+      engine: "onnxruntime"
+      device: "auto"
+      input_size: [640, 640]
+      confidence_threshold: 0.5
+      nms_threshold: 0.4
+      max_faces: 10
+      priority: 2
+    
+    # Backup Detection Model (fallback)
+    backup:
+      name: "opencv_haarcascade"
+      type: "opencv"
+      path: "models/weights/face_detection_opencv_haarcascade_20250628.xml"
+      engine: "opencv"
+      device: "cpu"
+      input_size: [640, 480]
+      confidence_threshold: 0.3
+      scale_factor: 1.1
+      min_neighbors: 5
+      priority: 3
+
+  # Recognition Model
+  recognition:
+    primary:
+      name: "mobilefacenet_recognizer"
+      type: "onnx"
+      path: "models/weights/face_recognition_mobilefacenet_20250703.onnx"
+      engine: "onnxruntime"
+      device: "auto"
+      input_size: [112, 112]
+      embedding_size: 192
+      confidence_threshold: 0.6
+      similarity_threshold: 0.7
+      priority: 1
+
+# Performance Configuration
+performance:
+  # ONNX Runtime Optimization
+  onnxruntime:
+    execution_mode: "auto"  # auto, sequential, parallel
+    graph_optimization_level: "all"  # none, basic, extended, all
+    enable_mem_pattern: true
+    enable_cpu_mem_arena: true
+    enable_mem_reuse: true
+    inter_op_num_threads: 0  # auto
+    intra_op_num_threads: 0  # auto
+    
+  # GPU Configuration (if available)
+  gpu:
+    provider: "cuda"  # cuda, tensorrt, openvino
+    memory_fraction: 0.8
+    allow_growth: true
+    
+  # CPU Configuration
+  cpu:
+    num_threads: 0  # auto-detect
+    enable_mkl: true
+    enable_openmp: true
+
+# Quality Assessment
+quality:
+  enabled: true
+  min_face_size: [80, 80]
+  max_face_size: [640, 640]
+  min_quality_score: 0.5
+  blur_threshold: 100
+  brightness_range: [0.3, 0.9]
+  contrast_range: [0.5, 1.5]
+
+# Processing Pipeline
+pipeline:
+  # Detection Pipeline
+  detection:
+    preprocess:
+      resize: true
+      normalize: true
+      mean: [104, 117, 123]
+      std: [1, 1, 1]
+    
+    postprocess:
+      nms: true
+      filter_by_size: true
+      filter_by_confidence: true
+      max_faces: 10
+  
+  # Recognition Pipeline
+  recognition:
+    preprocess:
+      align_faces: true
+      resize: [112, 112]
+      normalize: true
+      mean: [127.5, 127.5, 127.5]
+      std: [128.0, 128.0, 128.0]
+    
+    postprocess:
+      l2_normalize: true
+      similarity_metric: "cosine"  # cosine, euclidean, manhattan
+
+# Storage Configuration
+storage:
+  embeddings:
+    path: "data/domains/face_recognition/storage/embeddings"
+    format: "numpy"
+    compression: true
+  
+  faces:
+    path: "data/domains/face_recognition/storage/faces"
+    format: "jpg"
+    quality: 95
+  
+  persons:
+    path: "data/domains/face_recognition/storage/persons"
+    format: "json"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "data/logs/face_recognition/api.log"
+  max_size: "10MB"
+  backup_count: 5
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  workers: 4
+  timeout: 30
+  
+  # Rate Limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 100
+    burst_size: 20
+  
+  # CORS
+  cors:
+    enabled: true
+    origins: ["*"]
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    headers: ["Content-Type", "Authorization"]
+
+# Security Configuration
+security:
+  # JWT Configuration
+  jwt:
+    secret_key: "${JWT_SECRET_KEY}"
+    algorithm: "HS256"
+    expiration_hours: 24
+  
+  # API Keys
+  api_keys:
+    enabled: true
+    required: false
+  
+  # Data Protection
+  data_protection:
+    anonymize_faces: true
+    gdpr_compliance: true
+    retention_days: 30
+    encryption: true
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  metrics:
+    - "detection_accuracy"
+    - "recognition_accuracy"
+    - "processing_time"
+    - "memory_usage"
+    - "gpu_usage"
+  
+  alerts:
+    error_threshold: 0.1
+    performance_threshold: 1000  # ms
+    memory_threshold: 0.8  # 80%
+
+# Development Configuration
+development:
+  debug_mode: false
+  profile_performance: false
+  save_intermediate_results: false
+  test_mode: false 

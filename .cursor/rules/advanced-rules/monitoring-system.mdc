@@ -1,0 +1,468 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 성능 모니터링 시스템 (ADVANCED)
+
+## 📊 실시간 성능 대시보드
+
+### Prometheus & Grafana 통합
+```python
+import time
+import threading
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
+from typing import Dict, List, Optional
+import psutil
+import GPUtil
+
+class VisionSystemMetrics:
+    """비전 시스템 메트릭 수집기"""
+    
+    def __init__(self, port: int = 8000):
+        self.port = port
+        
+        # 카운터 메트릭
+        self.frame_processed_total = Counter(
+            'vision_frames_processed_total',
+            'Total number of frames processed',
+            ['camera_id', 'model_type']
+        )
+        
+        self.detection_total = Counter(
+            'vision_detections_total',
+            'Total number of detections',
+            ['class_name', 'confidence_range']
+        )
+        
+        self.error_total = Counter(
+            'vision_errors_total',
+            'Total number of errors',
+            ['error_type', 'component']
+        )
+        
+        # 히스토그램 메트릭
+        self.frame_processing_duration = Histogram(
+            'vision_frame_processing_seconds',
+            'Time spent processing frames',
+            ['camera_id', 'model_type'],
+            buckets=[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
+        )
+        
+        self.model_inference_duration = Histogram(
+            'vision_model_inference_seconds',
+            'Time spent on model inference',
+            ['model_name', 'device'],
+            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5]
+        )
+        
+        # 게이지 메트릭
+        self.current_fps = Gauge(
+            'vision_current_fps',
+            'Current frames per second',
+            ['camera_id']
+        )
+        
+        self.gpu_memory_usage = Gauge(
+            'vision_gpu_memory_usage_bytes',
+            'GPU memory usage in bytes',
+            ['gpu_id']
+        )
+        
+        self.cpu_usage = Gauge(
+            'vision_cpu_usage_percent',
+            'CPU usage percentage'
+        )
+        
+        self.memory_usage = Gauge(
+            'vision_memory_usage_bytes',
+            'Memory usage in bytes'
+        )
+        
+        # 비즈니스 메트릭
+        self.defect_detection_rate = Gauge(
+            'vision_defect_detection_rate',
+            'Current defect detection rate',
+            ['line_id', 'defect_type']
+        )
+        
+        self.quality_score = Gauge(
+            'vision_quality_score',
+            'Overall quality score',
+            ['metric_type']
+        )
+    
+    def start_monitoring(self):
+        """모니터링 시작"""
+        start_http_server(self.port)
+        self.is_monitoring = True
+        
+        self.monitoring_thread = threading.Thread(
+            target=self._monitoring_loop,
+            daemon=True
+        )
+        self.monitoring_thread.start()
+        
+        logger.info(f"Prometheus metrics server started on port {self.port}")
+    
+    def record_frame_processed(self, camera_id: str, model_type: str, duration: float):
+        """프레임 처리 기록"""
+        self.frame_processed_total.labels(
+            camera_id=camera_id, 
+            model_type=model_type
+        ).inc()
+        
+        self.frame_processing_duration.labels(
+            camera_id=camera_id,
+            model_type=model_type
+        ).observe(duration)
+```
+
+### Grafana 대시보드 설정
+```yaml
+# grafana_dashboard_config.yaml
+dashboard:
+  title: "Vision System Monitoring"
+  panels:
+    - title: "System Overview"
+      type: "stat"
+      targets:
+        - expr: "vision_current_fps"
+          legendFormat: "FPS - {{ camera_id }}"
+        - expr: "vision_active_cameras"
+          legendFormat: "Active Cameras"
+        - expr: "rate(vision_frames_processed_total[5m])"
+          legendFormat: "Processing Rate"
+    
+    - title: "Performance Metrics"
+      type: "graph"
+      targets:
+        - expr: "histogram_quantile(0.95, vision_frame_processing_seconds_bucket)"
+          legendFormat: "95th percentile processing time"
+        - expr: "histogram_quantile(0.50, vision_frame_processing_seconds_bucket)"
+          legendFormat: "50th percentile processing time"
+    
+    - title: "Resource Usage"
+      type: "graph"
+      targets:
+        - expr: "vision_cpu_usage_percent"
+          legendFormat: "CPU Usage %"
+        - expr: "vision_memory_usage_bytes / 1024 / 1024 / 1024"
+          legendFormat: "Memory Usage GB"
+        - expr: "vision_gpu_memory_usage_bytes / 1024 / 1024 / 1024"
+          legendFormat: "GPU Memory GB - {{ gpu_id }}"
+
+alerts:
+  - name: "High Error Rate"
+    condition: "rate(vision_errors_total[5m]) > 0.1"
+    severity: "warning"
+    
+  - name: "Low FPS"
+    condition: "vision_current_fps < 15"
+    severity: "critical"
+    
+  - name: "High GPU Memory Usage"
+    condition: "vision_gpu_memory_usage_bytes / 1024 / 1024 / 1024 > 6"
+    severity: "warning"
+```
+
+## 🚨 이상 감지 및 자동 알림
+
+### 이상 감지 시스템
+```python
+import numpy as np
+from sklearn.ensemble import IsolationForest
+from collections import deque
+
+class AnomalyDetector:
+    """이상 감지 시스템"""
+    
+    def __init__(self, window_size: int = 100):
+        self.window_size = window_size
+        self.metrics_history = {
+            'fps': deque(maxlen=window_size),
+            'processing_time': deque(maxlen=window_size),
+            'gpu_memory': deque(maxlen=window_size),
+            'detection_count': deque(maxlen=window_size)
+        }
+        
+        # 이상 감지 모델
+        self.models = {}
+        self._initialize_models()
+        
+        # 임계값 설정
+        self.thresholds = {
+            'fps_min': 15.0,
+            'fps_max': 60.0,
+            'processing_time_max': 0.1,  # 100ms
+            'gpu_memory_max': 0.9,       # 90%
+            'detection_count_min': 0,
+            'detection_count_max': 100
+        }
+    
+    def _initialize_models(self):
+        """이상 감지 모델 초기화"""
+        for metric_name in self.metrics_history.keys():
+            self.models[metric_name] = IsolationForest(
+                contamination=0.1,  # 10% 이상치 허용
+                random_state=42
+            )
+    
+    def add_metric(self, metric_name: str, value: float):
+        """메트릭 추가 및 이상 감지"""
+        if metric_name not in self.metrics_history:
+            return
+        
+        self.metrics_history[metric_name].append(value)
+        
+        # 충분한 데이터가 쌓이면 이상 감지 수행
+        if len(self.metrics_history[metric_name]) >= 50:
+            self._detect_anomaly(metric_name, value)
+    
+    def _detect_anomaly(self, metric_name: str, current_value: float):
+        """이상 감지 수행"""
+        history = list(self.metrics_history[metric_name])
+        
+        # 모델 훈련 (최근 데이터로)
+        if len(history) >= 50:
+            X = np.array(history[:-1]).reshape(-1, 1)
+            self.models[metric_name].fit(X)
+            
+            # 현재 값 이상 감지
+            current_X = np.array([[current_value]])
+            anomaly_score = self.models[metric_name].decision_function(current_X)[0]
+            is_anomaly = self.models[metric_name].predict(current_X)[0] == -1
+            
+            if is_anomaly:
+                self._handle_anomaly(metric_name, current_value, anomaly_score)
+```
+
+## 📈 비즈니스 메트릭 추적
+
+### 품질 관리 메트릭
+```python
+class QualityMetricsTracker:
+    """품질 관리 메트릭 추적기"""
+    
+    def __init__(self):
+        self.metrics_buffer = {
+            'defect_detections': deque(maxlen=1000),
+            'false_positives': deque(maxlen=1000),
+            'false_negatives': deque(maxlen=1000),
+            'processing_times': deque(maxlen=1000)
+        }
+        
+        self.quality_targets = {
+            'defect_rate_max': 0.05,    # 5% 최대 불량률
+            'accuracy_min': 0.95,       # 95% 최소 정확도
+            'precision_min': 0.90,      # 90% 최소 정밀도
+            'recall_min': 0.85,         # 85% 최소 재현율
+            'throughput_min': 100       # 시간당 최소 100개 처리
+        }
+    
+    def calculate_quality_metrics(self, window_hours: float = 1.0) -> Dict:
+        """품질 메트릭 계산"""
+        cutoff_time = time.time() - (window_hours * 3600)
+        
+        # 윈도우 내 데이터 필터링
+        recent_detections = [
+            d for d in self.metrics_buffer['defect_detections']
+            if d['timestamp'] > cutoff_time
+        ]
+        
+        if not recent_detections:
+            return {}
+        
+        # 기본 메트릭 계산
+        total_count = len(recent_detections)
+        true_positives = sum(1 for d in recent_detections if d['actual'] and d['predicted'])
+        false_positives = sum(1 for d in recent_detections if not d['actual'] and d['predicted'])
+        false_negatives = sum(1 for d in recent_detections if d['actual'] and not d['predicted'])
+        true_negatives = total_count - true_positives - false_positives - false_negatives
+        
+        # 품질 지표 계산
+        accuracy = (true_positives + true_negatives) / total_count if total_count > 0 else 0
+        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
+        recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        return {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1_score,
+            'total_processed': total_count
+        }
+```
+
+## 📝 고급 로깅 시스템
+
+### 구조화된 로깅
+```python
+import structlog
+import json
+from pythonjsonlogger import jsonlogger
+
+class VisionSystemLogger:
+    """비전 시스템 전용 구조화 로깅"""
+    
+    def __init__(self):
+        self.setup_structured_logging()
+        
+    def setup_structured_logging(self):
+        """구조화 로깅 설정"""
+        
+        # JSON 포맷터 설정
+        json_formatter = jsonlogger.JsonFormatter(
+            fmt='%(asctime)s %(name)s %(levelname)s %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        # 핸들러 설정
+        handlers = {
+            'console': logging.StreamHandler(),
+            'file': logging.FileHandler('data/runtime/logs/vision_system.json'),
+            'performance_file': logging.FileHandler('data/runtime/logs/performance.json'),
+            'business_file': logging.FileHandler('data/runtime/logs/business_metrics.json')
+        }
+        
+        # 각 핸들러에 JSON 포맷터 적용
+        for handler in handlers.values():
+            handler.setFormatter(json_formatter)
+        
+        # 로거 설정
+        self.loggers = {
+            'system': self._create_logger('vision.system', [handlers['console'], handlers['file']]),
+            'performance': self._create_logger('vision.performance', [handlers['performance_file']]),
+            'business': self._create_logger('vision.business', [handlers['business_file']])
+        }
+    
+    def log_frame_processing(self, 
+                           camera_id: str, 
+                           frame_id: int, 
+                           processing_time: float,
+                           detections: List[Dict],
+                           model_info: Dict):
+        """프레임 처리 로깅"""
+        
+        log_data = {
+            'event_type': 'frame_processing',
+            'camera_id': camera_id,
+            'frame_id': frame_id,
+            'processing_time_ms': processing_time * 1000,
+            'detection_count': len(detections),
+            'detections': detections,
+            'model_name': model_info.get('name'),
+            'model_version': model_info.get('version'),
+            'device': model_info.get('device')
+        }
+        
+        self.loggers['performance'].info(
+            "Frame processed",
+            extra=log_data
+        )
+    
+    def log_business_metric(self, 
+                          metric_name: str,
+                          value: float,
+                          unit: str,
+                          context: Dict):
+        """비즈니스 메트릭 로깅"""
+        
+        log_data = {
+            'event_type': 'business_metric',
+            'metric_name': metric_name,
+            'value': value,
+            'unit': unit,
+            'context': context
+        }
+        
+        self.loggers['business'].info(
+            f"Business metric: {metric_name}",
+            extra=log_data
+        )
+```
+
+## 🔧 모니터링 시스템 설치 및 설정
+
+### 설치 스크립트
+```bash
+#!/bin/bash
+# scripts/setup_monitoring.sh
+
+echo "Setting up monitoring system..."
+
+# Prometheus 설치
+wget https://github.com/prometheus/prometheus/releases/download/v2.40.0/prometheus-2.40.0.linux-amd64.tar.gz
+tar xvf prometheus-2.40.0.linux-amd64.tar.gz
+sudo mv prometheus-2.40.0.linux-amd64 /opt/prometheus
+
+# Grafana 설치
+sudo apt-get install -y software-properties-common
+sudo add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
+wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+sudo apt-get update
+sudo apt-get install grafana
+
+# Python 의존성 설치
+pip install prometheus-client psutil GPUtil structlog python-json-logger
+
+echo "Monitoring system setup completed"
+```
+
+### Prometheus 설정
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'vision-system'
+    static_configs:
+      - targets: ['localhost:8000']
+    scrape_interval: 5s
+    metrics_path: /metrics
+
+rule_files:
+  - "vision_alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+```
+
+### 알림 규칙
+```yaml
+# vision_alerts.yml
+groups:
+- name: vision_system_alerts
+  rules:
+  - alert: HighErrorRate
+    expr: rate(vision_errors_total[5m]) > 0.1
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High error rate detected"
+      description: "Error rate is {{ $value }} errors per second"
+
+  - alert: LowFPS
+    expr: vision_current_fps < 15
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Low FPS detected"
+      description: "FPS is {{ $value }} on camera {{ $labels.camera_id }}"
+```
+
+
+---
+
+**적용 시점**: factory_defect 도메인 추가 시 또는 성능 모니터링이 필요할 때
+**의존성**: `pip install prometheus-client psutil GPUtil structlog python-json-logger`
+**설정**: Prometheus + Grafana 서버 구축 필요
+
+

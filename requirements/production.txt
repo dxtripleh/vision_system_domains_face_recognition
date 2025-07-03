@@ -1,0 +1,58 @@
+# Production Requirements for Vision System
+# Updated for new model architecture: RetinaFace MobileNet0.25 -> MobileFaceNet -> OpenCV Haar Cascade
+
+# Core Dependencies
+opencv-python>=4.8.0
+numpy>=1.21.0
+Pillow>=9.0.0
+
+# ONNX Runtime (Primary Inference Engine)
+onnxruntime>=1.15.0
+onnxruntime-gpu>=1.15.0; platform_system == "Linux" and platform_machine == "x86_64"
+
+# Machine Learning & Computer Vision
+scikit-learn>=1.3.0
+scipy>=1.10.0
+
+# Data Processing
+pandas>=2.0.0
+pyyaml>=6.0
+
+# Web Framework (API)
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+python-multipart>=0.0.6
+
+# Security & Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
+
+# Monitoring & Logging
+structlog>=23.1.0
+python-json-logger>=2.0.7
+prometheus-client>=0.17.0
+
+# Database (if needed)
+sqlalchemy>=2.0.0
+alembic>=1.11.0
+
+# File Operations
+pathlib2>=2.3.7; python_version < "3.4"
+
+# System Monitoring
+psutil>=5.9.0
+
+# Image Processing
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.8
+
+# Optional: GPU Support
+# torch>=2.0.0; platform_system == "Linux"
+# torchvision>=0.15.0; platform_system == "Linux"
+
+# Development Tools (Production에서 제외 가능)
+# black>=23.3.0
+# isort>=5.12.0
+# flake8>=6.0.0
+# mypy>=1.3.0 

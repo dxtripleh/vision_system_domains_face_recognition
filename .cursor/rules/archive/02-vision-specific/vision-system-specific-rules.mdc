@@ -1,0 +1,519 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 비전 시스템 특화 규칙 (Vision System Specific Rules)
+
+이 규칙은 얼굴인식을 시작으로 확장 가능한 비전 시스템에만 적용되는 도메인 특화 개발 표준입니다.
+
+## 📁 비전 시스템 전용 구조
+
+### 최상위 표준 폴더 (비전 시스템 전용)
+- `domains/` - 도메인별 독립 개발 (face_recognition, factory_defect, powerline_inspection)
+- `shared/` - 공통 모듈 (vision_core, security)
+- `models/` - 모델 정의 및 가중치
+- `datasets/` - 구조화된 데이터셋 (학습 전용)
+- `data/` - 런타임 데이터 (temp, logs, output)
+
+### 계층별 의존성 규칙 (비전 시스템 특화)
+1. **Level 1**: `[common, config]` - 공통 유틸리티 및 설정 계층
+2. **Level 2**: `[shared]` - 공유 모듈 계층 (vision_core, security)
+3. **Level 3**: `[models]` - 모델 및 AI 관련 계층
+4. **Level 4**: `[domains]` - 도메인별 비즈니스 로직 계층
+5. **Level 5**: `[applications]` - 최종 사용자 애플리케이션 계층 (향후)
+
+### Shared/Vision_Core 폴더 구조 (비전 시스템 전용)
+```
+shared/vision_core/
+├── __init__.py (필수)
+├── README.md (필수)
+├── detection/
+│   ├── __init__.py (필수)
+│   ├── README.md (필수)
+│   ├── base_detector.py
+│   ├── face_detector.py
+│   ├── object_detector.py
+│   └── quality_assessor.py
+├── recognition/
+│   ├── __init__.py (필수)
+│   ├── README.md (필수)
+│   ├── base_recognizer.py
+│   ├── face_embedder.py
+│   ├── face_matcher.py
+│   └── similarity_matcher.py
+├── preprocessing/
+│   ├── __init__.py (필수)
+│   ├── README.md (필수)
+│   ├── image_processor.py
+│   ├── face_aligner.py
+│   ├── augmentation.py
+│   └── normalization.py
+├── postprocessing/
+│   ├── __init__.py (필수)
+│   ├── README.md (필수)
+│   ├── nms_utils.py
+│   ├── filtering.py
+│   └── visualization.py
+├── tracking/
+│   ├── __init__.py (필수)
+│   ├── README.md (필수)
+│   ├── tracker.py
+│   ├── motion_model.py
+│   └── association.py
+└── pose_estimation/
+    ├── __init__.py (필수)
+    ├── README.md (필수)
+    ├── pose_estimator.py
+    └── keypoint_utils.py
+```
+
+## 📝 비전 시스템 네이밍 규칙
+
+### 모델 가중치 파일 네이밍
+**패턴**: `{task}_{architecture}_{dataset}_{date}.{ext}`
+
+**지원 태스크**:
+- `face_detection` (얼굴 감지)
+- `face_recognition` (얼굴 인식)
+- `emotion` (감정 인식)
+- `landmark` (랜드마크 추출)
+- `pose` (자세 추정)
+- `tracking` (객체 추적)
+- `defect_detection` (불량 검출) - 향후
+- `powerline_inspection` (활선 검사) - 향후
+
+**예시**:
+- `face_detection_retinaface_widerface_20250628.pt`
+- `face_recognition_arcface_glint360k_20250628.onnx`
+- `emotion_resnet50_fer_20250628.onnx`
+- `defect_detection_yolov8n_factory_20250628.pt` (향후)
+- `powerline_inspection_efficientdet_d1_20250628.onnx` (향후)
+
+### 도메인 네이밍 규칙 (비전 시스템 전용)
+```python
+# Domains 내 파일 네이밍
+DOMAIN_NAMING_RULES = {
+    'core_pattern': '{entity_name}.py',
+    'service_pattern': '{service_name}_service.py',
+    'repository_pattern': '{entity_name}_repository.py',
+    'value_object_pattern': '{value_object_name}.py',
+    'examples': [
+        'face.py',                    # 엔티티
+        'person.py',                  # 엔티티
+        'face_detection_service.py',  # 서비스
+        'face_repository.py',         # 저장소
+        'bounding_box.py'             # 값 객체
+    ]
+}
+
+# Infrastructure 내 파일 네이밍
+INFRASTRUCTURE_NAMING_RULES = {
+    'model_pattern': '{model_type}_model.py',
+    'storage_pattern': '{storage_type}_storage.py',
+    'engine_pattern': '{engine_type}_engine.py',
+    'examples': [
+        'retinaface_model.py',        # AI 모델
+        'arcface_model.py',           # AI 모델
+        'file_storage.py',            # 저장소
+        'detection_engine.py'         # 검출 엔진
+    ]
+}
+
+# Interfaces 내 파일 네이밍
+INTERFACE_NAMING_RULES = {
+    'api_pattern': '{domain_name}_api.py',
+    'cli_pattern': '{domain_name}_cli.py',
+    'examples': [
+        'face_recognition_api.py',    # REST API
+        'face_recognition_cli.py'     # CLI 인터페이스
+    ]
+}
+```
+
+## 🏭 도메인 특화 규칙
+
+### 얼굴인식 도메인 표준 (현재 개발 중)
+```python
+# 얼굴인식 관련 표준 정의
+FACE_RECOGNITION_STANDARDS = {
+    'confidence_thresholds': {
+        'detection_min': 0.5,        # 최소 검출 신뢰도
+        'recognition_min': 0.6,      # 최소 인식 신뢰도
+        'high_confidence': 0.8       # 높은 신뢰도 기준
+    },
+    'image_requirements': {
+        'min_face_size': (80, 80),   # 최소 얼굴 크기
+        'max_face_size': (640, 640), # 최대 얼굴 크기
+        'supported_formats': ['jpg', 'png', 'bmp']
+    },
+    'privacy_settings': {
+        'anonymize_by_default': True, # 기본 익명화
+        'gdpr_compliance': True,      # GDPR 준수
+        'data_retention_days': 30     # 데이터 보존 기간
+    }
+}
+```
+
+### 공장 불량 검출 표준 (향후 개발)
+```python
+# 불량 유형 정의 (표준화) - 향후 factory_defect 도메인용
+DEFECT_TYPES = {
+    'scratch': {'id': 0, 'color': [0, 0, 255], 'threshold': 0.3},
+    'dent': {'id': 1, 'color': [0, 255, 0], 'threshold': 0.4}, 
+    'crack': {'id': 2, 'color': [255, 0, 0], 'threshold': 0.5},
+    'discoloration': {'id': 3, 'color': [255, 255, 0], 'threshold': 0.3}
+}
+
+# 품질 관리 임계값
+QUALITY_THRESHOLDS = {
+    'alert_threshold': 0.05,     # 5% 불량률에서 경고
+    'critical_threshold': 0.1,   # 10% 불량률에서 심각 알림
+    'sampling_rate': 1.0         # 100% 샘플링
+}
+```
+
+### 활선 상태 검출 표준 (향후 개발)
+```python
+# 활선 상태 정의 (표준화) - 향후 powerline_inspection 도메인용
+POWERLINE_DEFECTS = {
+    'broken_insulator': {'id': 0, 'threshold': 0.4},
+    'damaged_conductor': {'id': 1, 'threshold': 0.35},
+    'missing_component': {'id': 2, 'threshold': 0.3},
+    'corroded_part': {'id': 3, 'threshold': 0.45},
+    'bent_tower': {'id': 4, 'threshold': 0.5}
+}
+```
+
+### 키보드 단축키 처리 (비전 시스템 표준)
+```python
+def handle_keyboard_input():
+    """표준 키보드 단축키 처리"""
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):      # q: 종료
+        return 'quit'
+    elif key == ord('i'):    # i: 정보 표시 토글
+        return 'toggle_info'
+    elif key == ord('s'):    # s: 현재 프레임 저장
+        return 'save_frame'
+    elif key == ord('r'):    # r: 녹화 시작/중지
+        return 'toggle_record'
+    elif key == ord('p'):    # p: 일시 정지/재생
+        return 'toggle_pause'
+    elif key == ord('h'):    # h: 도움말 표시
+        return 'show_help'
+    elif key == ord('+'):    # +: 임계값 증가
+        return 'increase_threshold'
+    elif key == ord('-'):    # -: 임계값 감소
+        return 'decrease_threshold'
+    return None
+```
+
+## 🤖 비전 모델 관리
+
+### 하드웨어 자동 감지 및 모델 선택
+```python
+def select_optimal_model():
+    """하드웨어 환경에 따른 최적 모델 자동 선택"""
+    if torch.cuda.is_available():
+        # GPU 환경
+        return {
+            'model': 'retinaface_resnet50',
+            'batch_size': 4,
+            'precision': 'fp16',
+            'device': 'cuda'
+        }
+    else:
+        # CPU 환경  
+        return {
+            'model': 'retinaface_mobilenet',
+            'batch_size': 1,
+            'precision': 'fp32',
+            'device': 'cpu'
+        }
+```
+
+### 앙상블 모델 시스템
+```python
+ENSEMBLE_STRATEGIES = {
+    'voting': {
+        'description': '다수결 투표 방식으로 여러 모델의 예측 결과를 결합',
+        'parameters': {
+            'weight_by_confidence': True,  # 신뢰도에 따라 투표 가중치 부여
+            'min_confidence': 0.4
+        }
+    },
+    'averaging': {
+        'description': '여러 모델의 예측 결과(확률)를 평균하여 결합',
+        'parameters': {
+            'weighted': True,  # 모델 성능 가중치 적용
+            'softmax': True    # 최종 결과에 softmax 적용
+        }
+    }
+}
+```
+
+## 📊 데이터셋 관리 (비전 시스템 특화)
+
+### 도메인별 데이터셋 구조
+```python
+DATASET_DOMAINS = {
+    'face_recognition': {
+        'structure': ['raw', 'processed', 'augmented', 'splits'],
+        'formats': ['jpg', 'png'],
+        'annotations': 'json',
+        'preprocessing': ['resize', 'normalize', 'align_faces']
+    },
+    'factory_defect': {  # 향후
+        'structure': ['raw', 'processed', 'augmented', 'splits'],
+        'formats': ['jpg', 'png', 'tiff'],
+        'annotations': 'yolo',
+        'preprocessing': ['resize', 'normalize', 'clahe']
+    },
+    'powerline_inspection': {  # 향후
+        'structure': ['raw', 'processed', 'augmented', 'splits'],
+        'formats': ['jpg', 'png', 'tiff'],
+        'annotations': 'coco',
+        'preprocessing': ['resize', 'normalize', 'edge_enhancement']
+    }
+}
+```
+
+### 데이터 증강 설정 (도메인별)
+```python
+DOMAIN_AUGMENTATION_SETTINGS = {
+    'face_recognition': {
+        'recommended': ['flip', 'brightness', 'rotation'],
+        'resize': [224, 224],
+        'normalize': True,
+        'align_faces': True
+    },
+    'factory_defect': {  # 향후
+        'recommended': ['brightness', 'rotation', 'noise'],
+        'resize': [800, 800],
+        'normalize': True,
+        'clahe': True
+    },
+    'powerline_inspection': {  # 향후
+        'recommended': ['brightness', 'contrast', 'gamma'],
+        'resize': [1024, 1024],
+        'normalize': True,
+        'edge_enhancement': True
+    }
+}
+```
+
+## 🎥 카메라 시스템 관리
+
+### 카메라 유형별 설정
+```python
+CAMERA_CONFIGURATIONS = {
+    'usb_camera': {
+        'device_pattern': '/dev/video*',
+        'typical_indices': [0, 1, 2],
+        'common_resolutions': [(640, 480), (1280, 720), (1920, 1080)],
+        'supported_formats': ['MJPG', 'YUYV']
+    },
+    'ip_camera': {
+        'protocol_support': ['rtsp', 'http', 'onvif'],
+        'authentication': ['basic', 'digest'],
+        'stream_formats': ['h264', 'mjpeg'],
+        'common_ports': [554, 80, 8080]
+    },
+    'jetson_camera': {
+        'types': ['CSI', 'USB'],
+        'gstreamer_pipeline': True,
+        'hardware_acceleration': True
+    }
+}
+```
+
+## 🎯 실행 스크립트 템플릿 (비전 시스템)
+
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+비전 시스템 실행 스크립트 템플릿
+
+이 스크립트는 비전 시스템의 특정 도메인 기능을 실행합니다.
+"""
+
+import os
+import sys
+import argparse
+import logging
+import cv2
+from pathlib import Path
+
+# 프로젝트 루트 경로 추가
+current_dir = Path(__file__).parent
+project_root = current_dir.parent.parent
+sys.path.append(str(project_root))
+
+from common.logging import setup_logging
+from common.config import load_config
+from domains.{domain_name}.interfaces.api import {DomainName}API
+
+def parse_args():
+    """명령줄 인자 파싱"""
+    parser = argparse.ArgumentParser(description="{기능명} 실행")
+    parser.add_argument("--source", type=str, default="0", help="입력 소스 (카메라 ID, 파일 경로, RTSP URL)")
+    parser.add_argument("--model", type=str, help="모델 파일 경로")
+    parser.add_argument("--config", type=str, help="설정 파일 경로")
+    parser.add_argument("--output", type=str, help="출력 경로")
+    parser.add_argument("--conf", type=float, default=0.5, help="신뢰도 임계값")
+    parser.add_argument("--show", action="store_true", help="결과 화면 표시")
+    parser.add_argument("--save", action="store_true", help="결과 저장")
+    return parser.parse_args()
+
+def handle_keyboard_input():
+    """키보드 입력 처리"""
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):
+        return 'quit'
+    elif key == ord('s'):
+        return 'save_frame'
+    elif key == ord('r'):
+        return 'toggle_record'
+    elif key == ord('p'):
+        return 'toggle_pause'
+    return None
+
+def main():
+    """메인 함수"""
+    args = parse_args()
+    
+    # 로깅 설정
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    
+    # 설정 로드
+    config = load_config(args.config)
+    
+    try:
+        # 메인 로직 실행
+        logger.info("Starting {기능명}")
+        
+        # 입력 소스 설정
+        if args.source.isdigit():
+            cap = cv2.VideoCapture(int(args.source))
+        else:
+            cap = cv2.VideoCapture(args.source)
+        
+        if not cap.isOpened():
+            logger.error(f"Cannot open source: {args.source}")
+            return
+        
+        # 도메인 API 초기화
+        api = {DomainName}API()
+        
+        # 메인 처리 루프
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # 프레임 처리
+            result = api.process(frame)
+            
+            # 결과 표시
+            if args.show:
+                cv2.imshow('Result', frame)
+                
+                # 키보드 입력 처리
+                action = handle_keyboard_input()
+                if action == 'quit':
+                    break
+                elif action == 'save_frame':
+                    # 프레임 저장 로직
+                    cv2.imwrite(f'data/output/frame_{timestamp}.jpg', frame)
+        
+        cap.release()
+        cv2.destroyAllWindows()
+        
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise
+    finally:
+        logger.info("Finished {기능명}")
+
+if __name__ == "__main__":
+    main()
+```
+
+## 🔧 하드웨어 연결 및 시뮬레이션 방지
+
+### 하드웨어 연결 검증 표준
+```python
+def verify_hardware_connection():
+    """
+    하드웨어 연결 상태를 확인합니다.
+    시뮬레이션 모드를 철저히 방지합니다.
+    """
+    # 시뮬레이션 방지
+    if os.environ.get("USE_SIMULATION", "False").lower() == "true":
+        raise RuntimeError("시뮬레이션 모드는 금지되어 있습니다. 실제 하드웨어를 연결하세요.")
+    
+    # 카메라 연결 확인
+    try:
+        from scripts.camera.check_camera import check_camera_connection
+        camera_info = check_camera_connection(
+            camera_id=config.get('camera', {}).get('id', 0),
+            required_fps=config.get('camera', {}).get('min_fps', 15),
+            required_resolution=tuple(config.get('camera', {}).get('min_resolution', (640, 480)))
+        )
+        
+        if not camera_info:
+            raise RuntimeError("카메라 연결 실패. 하드웨어 연결을 확인하세요.")
+            
+        return True
+        
+    except ImportError:
+        raise RuntimeError("하드웨어 검증 모듈을 로드할 수 없습니다.")
+    except Exception as e:
+        raise RuntimeError(f"하드웨어 연결 확인 중 오류 발생: {str(e)}")
+```
+
+### 하드웨어 연결 규칙
+```python
+HARDWARE_CONNECTION_RULES = {
+    'simulation_prevention': {
+        'env_var_check': 'USE_SIMULATION must be False',
+        'dummy_data_prohibited': True,
+        'mock_hardware_prohibited': True,
+        'test_doubles_in_production': False
+    },
+    'camera_requirements': {
+        'min_fps': 15,
+        'min_resolution': (640, 480),
+        'connection_timeout': 10,  # seconds
+        'retry_attempts': 3
+    },
+    'validation_before_run': {
+        'required': True,
+        'fail_fast': True,
+        'log_hardware_info': True
+    }
+}
+```
+
+## ⚠️ 비전 시스템 특화 금지 사항
+
+1. **절대 금지**: 도메인 간 직접 import (domains.face_recognition → domains.factory_defect)
+2. **절대 금지**: 모델 파일을 `models/weights/` 폴더 외부에 저장
+3. **절대 금지**: 카메라 리소스 해제 없이 프로그램 종료
+4. **절대 금지**: OpenCV 창 생성 후 `destroyAllWindows()` 호출 누락
+5. **절대 금지**: 비전 처리 결과를 `data/output/` 외부에 저장
+6. **절대 금지**: 하드코딩된 모델 경로 (config 파일 활용)
+7. **절대 금지**: 프레임 처리 중 메모리 누수 (적절한 리소스 관리)
+8. **절대 금지**: 실시간 처리에서 동기 I/O 사용 (비동기 처리 권장)
+9. **절대 금지**: 하드웨어 미연결 상태에서 run 파일 실행
+10. **절대 금지**: numpy random image, opencv dummy 영상 등 가짜 데이터로 실행
+11. **절대 금지**: 테스트/시뮬레이터 코드가 run_*.py에 포함된 상태로 실행
+12. **절대 금지**: USE_SIMULATION 환경 변수를 True로 설정하여 실행
+
+코드를 생성할 때 이 모든 비전 시스템 특화 규칙을 엄격히 준수하고, 규칙을 위반하는 코드는 절대 생성하지 마세요.
+

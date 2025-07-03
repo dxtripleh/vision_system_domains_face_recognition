@@ -1,0 +1,9 @@
+confidence_threshold: 0.3
+description: OpenCV Haar Cascade 얼굴 검출기 (CPU 전용)
+download_date: '2025-06-28'
+filename: face_detection_opencv_haarcascade_20250628.xml
+framework: opencv
+model_name: opencv_haarcascade
+size_mb: 0.9
+task: face_detection
+url: https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml

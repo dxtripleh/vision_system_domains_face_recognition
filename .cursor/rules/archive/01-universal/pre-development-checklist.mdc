@@ -1,0 +1,361 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 개발 전 체크리스트 (Pre-Development Checklist)
+
+## 🎯 목적
+
+새로운 **도메인**, **모듈**, 또는 **기능** 개발을 시작하기 전에 반드시 확인해야 할 사항들을 정리하여  
+**일관성**, **품질**, **확장성**을 보장하고 **기술 부채**를 방지합니다.
+
+---
+
+## 📋 **1. 아키텍처 검토 체크리스트**
+
+### ✅ **도메인 분리 확인**
+- [ ] 새로운 기능이 기존 도메인에 속하는가?
+  - **Yes**: 해당 도메인 폴더에 추가 (`domains/{domain_name}/`)
+  - **No**: 새로운 도메인 생성 필요
+- [ ] 도메인 간 의존성이 없는가?
+- [ ] DDD 패턴을 따르는가? (Core, Infrastructure, Interfaces)
+
+### ✅ **계층별 배치 확인**
+```python
+LAYER_PLACEMENT_CHECK = {
+    'common/': '완전한 도메인 독립적 유틸리티인가?',
+    'shared/': '2개 이상 도메인에서 사용되는 공통 기능인가?',
+    'domains/': '특정 도메인의 비즈니스 로직인가?',
+    'models/': 'AI 모델 관련 파일인가?',
+    'config/': '전역 설정 파일인가?'
+}
+```
+
+### ✅ **확장성 고려사항**
+- [ ] 향후 다른 도메인에서 재사용 가능한가?
+- [ ] 마이크로서비스로 분리 가능한 구조인가?
+- [ ] VLM 통합 시 호환 가능한가?
+
+---
+
+## 📋 **2. 기술 스택 체크리스트**
+
+### ✅ **개발 환경 설정**
+- [ ] Python 3.9+ 설치 확인
+- [ ] 가상환경 설정 완료
+- [ ] 필수 개발 도구 설치
+  - [ ] Black (코드 포맷팅)
+  - [ ] isort (import 정렬)
+  - [ ] flake8 (린팅)
+  - [ ] mypy (타입 체킹)
+  - [ ] pytest (테스트)
+
+### ✅ **의존성 관리**
+- [ ] `requirements.txt` 업데이트 필요 여부 확인
+- [ ] 새로운 라이브러리 추가 시 라이선스 호환성 확인
+- [ ] 보안 취약점 없는 버전 선택
+
+### ✅ **하드웨어 요구사항**
+- [ ] GPU 필요 여부 확인
+- [ ] 메모리 요구사항 산정
+- [ ] 실시간 처리 요구사항 확인
+
+---
+
+## 📋 **3. 코딩 표준 체크리스트**
+
+### ✅ **파일 네이밍 규칙**
+```python
+NAMING_CONVENTIONS = {
+    'domains': {
+        'entities': '{entity_name}.py',
+        'services': '{service_name}_service.py',
+        'repositories': '{entity_name}_repository.py',
+        'value_objects': '{value_object_name}.py'
+    },
+    'shared': {
+        'modules': '{module_name}.py',
+        'utilities': '{utility_name}_utils.py'
+    },
+    'common': {
+        'utilities': '{category}_utils.py',
+        'managers': '{resource}_manager.py'
+    }
+}
+```
+
+### ✅ **코드 품질 기준**
+- [ ] 모든 public 함수에 Type hints 추가
+- [ ] 모든 public 함수/클래스에 Docstring 작성 (Google Style)
+- [ ] 단위 테스트 작성 (최소 80% 커버리지)
+- [ ] 에러 처리 로직 포함
+
+### ✅ **보안 고려사항**
+- [ ] 개인정보 처리 시 GDPR 준수
+- [ ] 입력 데이터 검증 로직 포함
+- [ ] 민감정보 하드코딩 금지
+
+---
+
+## 📋 **4. 데이터 관리 체크리스트**
+
+### ✅ **데이터 저장 위치**
+```python
+DATA_STORAGE_RULES = {
+    'datasets/': '학습용 데이터만 (원본, 전처리, 라벨링)',
+    'data/temp/': '임시 파일 (자동 정리)',
+    'data/logs/': '로그 파일',
+    'data/output/': '처리 결과물',
+    'models/weights/': '모델 가중치 파일',
+    'models/configs/': '모델 설정 파일'
+}
+```
+
+### ✅ **파일 네이밍 규칙**
+- [ ] 모델 파일: `{task}_{architecture}_{dataset}_{date}.{ext}`
+- [ ] 데이터셋: `{domain}/{category}/{filename}.{ext}`
+- [ ] 로그 파일: `{component}_{date}.log`
+
+### ✅ **데이터 보안**
+- [ ] 개인정보 포함 데이터 암호화
+- [ ] 데이터 보존 기간 설정
+- [ ] 백업 전략 수립
+
+---
+
+## 📋 **5. 문서화 체크리스트**
+
+### ✅ **필수 문서 생성**
+- [ ] `README.md` (모듈/도메인 개요)
+- [ ] `STRUCTURE.md` (구조 설명) - 필요시
+- [ ] `CHANGELOG.md` (변경 이력) - 필요시
+- [ ] API 문서 (인터페이스 제공 시)
+
+### ✅ **문서 품질 기준**
+- [ ] 설치/실행 방법 명시
+- [ ] 사용 예제 포함
+- [ ] API 레퍼런스 완성
+- [ ] 제한사항 및 주의사항 명시
+
+---
+
+## 📋 **6. 테스트 전략 체크리스트**
+
+### ✅ **테스트 종류별 계획**
+```python
+TEST_STRATEGY = {
+    'unit_tests': {
+        'target_coverage': 80,
+        'location': 'tests/unit/',
+        'naming': 'test_{module_name}.py'
+    },
+    'integration_tests': {
+        'target_coverage': 60,
+        'location': 'tests/integration/',
+        'focus': '도메인 간 연동'
+    },
+    'e2e_tests': {
+        'target_coverage': 30,
+        'location': 'tests/e2e/',
+        'focus': '전체 워크플로우'
+    }
+}
+```
+
+### ✅ **성능 테스트**
+- [ ] 실시간 처리 요구사항 확인
+- [ ] 메모리 사용량 제한 설정
+- [ ] 처리 속도 벤치마크 정의
+
+---
+
+## 📋 **7. 현재 프로젝트 상태 체크리스트**
+
+### ✅ **완료된 구조 (2025-06-28 기준)**
+- [x] **도메인 구조 설계 완료**
+  - [x] `domains/face_recognition/` 구조 생성
+  - [x] DDD 기반 core 계층 완성
+  - [x] Infrastructure 계층 정의
+  - [x] Interfaces 계층 정의
+
+- [x] **기본 엔티티 정의 완료**
+  - [x] Face 엔티티
+  - [x] Person 엔티티
+  - [x] FaceDetectionResult 엔티티
+  - [x] BoundingBox 값 객체
+
+- [x] **문서화 완료**
+  - [x] 도메인별 README.md 생성
+  - [x] 서브모듈별 README.md 생성
+  - [x] 아키텍처 문서 정리
+
+### ✅ **진행 중인 작업**
+- [ ] **얼굴인식 AI 모델 통합**
+  - [ ] RetinaFace 검출 모델 통합
+  - [ ] ArcFace 인식 모델 통합
+  - [ ] 실제 추론 파이프라인 구현
+
+- [ ] **API 인터페이스 구현**
+  - [ ] REST API 엔드포인트
+  - [ ] CLI 인터페이스
+  - [ ] 실시간 스트림 처리
+
+### ✅ **다음 단계 준비사항**
+- [ ] **Shared 모듈 구현**
+  - [ ] `shared/vision_core/detection/` 구현
+  - [ ] `shared/vision_core/recognition/` 구현
+  - [ ] `shared/security/privacy/` 구현
+
+- [ ] **두 번째 도메인 준비**
+  - [ ] `domains/factory_defect/` 구조 설계
+  - [ ] 기존 shared 모듈 재사용성 검증
+
+---
+
+## 📋 **8. 새 도메인 개발 체크리스트**
+
+### ✅ **도메인 생성 전 확인사항**
+- [ ] 도메인 명칭 결정 (snake_case)
+- [ ] 도메인 범위 및 책임 정의
+- [ ] 기존 도메인과의 차별점 명확화
+- [ ] 필요한 AI 모델 식별
+
+### ✅ **도메인 구조 생성**
+```bash
+# 새 도메인 생성 명령어 예시
+mkdir -p domains/{new_domain}/core/{entities,services,repositories,value_objects}
+mkdir -p domains/{new_domain}/infrastructure/{models,storage,detection_engines}
+mkdir -p domains/{new_domain}/interfaces/{api,cli}
+
+# 필수 파일 생성
+touch domains/{new_domain}/core/entities/__init__.py
+touch domains/{new_domain}/README.md
+```
+
+### ✅ **도메인별 특화 확인사항**
+```python
+DOMAIN_SPECIFIC_CHECKS = {
+    'face_recognition': {
+        'privacy_compliance': 'GDPR 준수 필수',
+        'model_types': ['detection', 'recognition', 'verification'],
+        'data_sensitivity': 'HIGH'
+    },
+    'factory_defect': {
+        'real_time_requirement': '실시간 처리 필수',
+        'model_types': ['detection', 'classification'],
+        'accuracy_requirement': '95% 이상'
+    },
+    'powerline_inspection': {
+        'sensor_fusion': '다중 센서 데이터 처리',
+        'model_types': ['detection', 'segmentation'],
+        'environmental_conditions': '야외 환경 대응'
+    }
+}
+```
+
+---
+
+## 📋 **9. CI/CD 준비 체크리스트**
+
+### ✅ **자동화 스크립트 확인**
+- [ ] 코드 품질 검사 스크립트 (`scripts/check_code_style.py`)
+- [ ] 테스트 실행 스크립트
+- [ ] 문서 생성 스크립트
+- [ ] 배포 스크립트
+
+### ✅ **Git 훅 설정**
+- [ ] pre-commit 훅 (코드 스타일 검사)
+- [ ] pre-push 훅 (테스트 실행)
+- [ ] commit-msg 훅 (커밋 메시지 검증)
+
+---
+
+## 📋 **10. 최종 검토 체크리스트**
+
+### ✅ **개발 시작 전 최종 확인**
+- [ ] 모든 체크리스트 항목 완료
+- [ ] 아키텍처 팀 승인 (필요시)
+- [ ] 리소스 할당 확인 (인력, 시간, 하드웨어)
+- [ ] 위험 요소 식별 및 대응 계획
+
+### ✅ **품질 보증**
+- [ ] 코딩 표준 준수 약속
+- [ ] 테스트 커버리지 목표 설정
+- [ ] 문서화 완성도 목표 설정
+- [ ] 성능 벤치마크 목표 설정
+
+---
+
+## 🚀 **체크리스트 자동화 도구**
+
+```python
+class PreDevelopmentChecker:
+    """개발 전 체크리스트 자동 검증"""
+    
+    def __init__(self, project_root: str):
+        self.project_root = Path(project_root)
+        
+    def run_full_check(self) -> Dict[str, bool]:
+        """전체 체크리스트 자동 검증"""
+        results = {}
+        
+        results['architecture'] = self._check_architecture()
+        results['tech_stack'] = self._check_tech_stack()
+        results['coding_standards'] = self._check_coding_standards()
+        results['data_management'] = self._check_data_management()
+        results['documentation'] = self._check_documentation()
+        results['testing'] = self._check_testing_setup()
+        
+        return results
+    
+    def _check_architecture(self) -> bool:
+        """아키텍처 검토"""
+        required_dirs = [
+            'domains', 'shared', 'common', 'config',
+            'models', 'datasets', 'data', 'scripts'
+        ]
+        
+        for dir_name in required_dirs:
+            if not (self.project_root / dir_name).exists():
+                return False
+        
+        return True
+    
+    def _check_tech_stack(self) -> bool:
+        """기술 스택 확인"""
+        # Python 버전 확인
+        if sys.version_info < (3, 9):
+            return False
+        
+        # 필수 패키지 확인
+        required_packages = ['black', 'isort', 'flake8', 'mypy', 'pytest']
+        
+        for package in required_packages:
+            try:
+                __import__(package)
+            except ImportError:
+                return False
+        
+        return True
+    
+    def generate_report(self, results: Dict[str, bool]) -> str:
+        """체크리스트 결과 리포트 생성"""
+        report = "# Pre-Development Checklist Report\n\n"
+        
+        for category, passed in results.items():
+            status = "✅ PASS" if passed else "❌ FAIL"
+            report += f"- {category}: {status}\n"
+        
+        overall_status = "READY" if all(results.values()) else "NOT READY"
+        report += f"\n**Overall Status: {overall_status}**\n"
+        
+        return report
+```
+
+---
+
+**이 체크리스트를 통해 개발 시작 전 모든 준비사항을 체계적으로 확인하여 고품질의 일관된 코드를 생산할 수 있습니다! 🚀**
+
+
+

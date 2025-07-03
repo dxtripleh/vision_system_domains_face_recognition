@@ -1,0 +1,2062 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 하드웨어 요구사항 및 환경 규칙 (Hardware Requirements & Environment Rules)
+
+이 규칙은 하드웨어 요구사항, 환경 자동 감지, 플랫폼별 최적화에 관한 표준입니다.
+
+## 🖥️ 하드웨어 요구사항
+
+### 지원 플랫폼
+```python
+SUPPORTED_PLATFORMS = {
+    'windows': {
+        'versions': ['10', '11'],
+        'architectures': ['x64'],
+        'python_versions': ['3.8', '3.9', '3.10', '3.11'],
+        'special_requirements': {
+            'visual_cpp_redistributable': '2019 이상',
+            'direct_x': '12 이상'
+        }
+    },
+    'linux': {
+        'distributions': ['Ubuntu 18.04+', 'CentOS 7+', 'Debian 10+'],
+        'architectures': ['x64', 'arm64'],
+        'python_versions': ['3.8', '3.9', '3.10', '3.11'],
+        'special_requirements': {
+            'glibc': '2.27 이상',
+            'gtk': '3.0 이상'
+        }
+    },
+    'jetson': {
+        'models': ['Nano', 'Xavier NX', 'AGX Xavier', 'TX2', 'Orin'],
+        'jetpack_versions': ['4.6+', '5.0+'],
+        'python_versions': ['3.6', '3.8', '3.9'],
+        'special_requirements': {
+            'cuda': '10.2 이상',
+            'tensorrt': '8.0 이상',
+            'opencv': '4.5 이상 (CUDA 지원)'
+        }
+    },
+    'raspberry_pi': {
+        'models': ['4B', '400', 'CM4'],
+        'os_versions': ['Bullseye', 'Bookworm'],
+        'python_versions': ['3.9', '3.10', '3.11'],
+        'special_requirements': {
+            'gpu_memory_split': '128MB 이상',
+            'camera_module': 'v2 이상 권장'
+        }
+    }
+}
+```
+
+### 하드웨어 구성 요소
+```python
+HARDWARE_COMPONENTS = {
+    'cameras': {
+        'usb_cameras': {
+            'supported_formats': ['MJPG', 'YUYV', 'H264'],
+            'min_resolution': (640, 480),
+            'max_resolution': (1920, 1080),
+            'min_fps': 15,
+            'max_fps': 60,
+            'usb_version': '2.0 이상'
+        },
+        'ip_cameras': {
+            'protocols': ['RTSP', 'HTTP', 'ONVIF'],
+            'encodings': ['H264', 'H265', 'MJPEG'],
+            'authentication': ['None', 'Basic', 'Digest'],
+            'network_requirements': {
+                'bandwidth': '10Mbps 이상',
+                'latency': '100ms 이하'
+            }
+        },
+        'csi_cameras': {
+            'platforms': ['Jetson', 'Raspberry Pi'],
+            'supported_sensors': ['IMX219', 'IMX477', 'OV5647'],
+            'interface': 'CSI-2',
+            'lanes': [2, 4]
+        }
+    },
+    'compute': {
+        'cpu': {
+            'min_cores': 4,
+            'min_frequency': '2.0GHz',
+            'architectures': ['x64', 'arm64'],
+            'instruction_sets': ['SSE4.2', 'AVX2']
+        },
+        'memory': {
+            'min_ram': '8GB',
+            'recommended_ram': '16GB',
+            'swap_requirement': '2GB'
+        },
+        'gpu': {
+            'nvidia': {
+                'min_compute_capability': '6.1',
+                'min_vram': '4GB',
+                'cuda_versions': ['11.0', '11.2', '11.8', '12.0']
+            },
+            'amd': {
+                'rocm_versions': ['5.0', '5.2', '5.4'],
+                'min_vram': '4GB'
+            },
+            'intel': {
+                'integrated_graphics': True,
+                'arc_support': True,
+                'opencl_version': '2.0 이상'
+            }
+        }
+    },
+    'storage': {
+        'min_free_space': '50GB',
+        'recommended_type': 'SSD',
+        'io_speed': {
+            'read': '100MB/s 이상',
+            'write': '50MB/s 이상'
+        }
+    }
+}
+```
+
+## 🔍 환경 자동 감지
+
+### 하드웨어 감지 함수
+```python
+import platform
+import psutil
+import subprocess
+import cv2
+import torch
+
+def detect_hardware_environment():
+    """
+    실행 환경의 하드웨어를 자동으로 감지합니다.
+    """
+    env_info = {
+        'platform': {
+            'system': platform.system(),
+            'release': platform.release(),
+            'version': platform.version(),
+            'machine': platform.machine(),
+            'processor': platform.processor()
+        },
+        'compute': {
+            'cpu_count': psutil.cpu_count(logical=False),
+            'cpu_logical_count': psutil.cpu_count(logical=True),
+            'cpu_frequency': psutil.cpu_freq().max if psutil.cpu_freq() else None,
+            'memory_total': psutil.virtual_memory().total,
+            'memory_available': psutil.virtual_memory().available
+        },
+        'gpu': {
+            'cuda_available': torch.cuda.is_available(),
+            'cuda_device_count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            'cuda_version': torch.version.cuda if torch.cuda.is_available() else None
+        },
+        'cameras': detect_cameras(),
+        'storage': detect_storage_info()
+    }
+    
+    return env_info
+
+def detect_cameras():
+    """연결된 카메라 장치를 감지합니다."""
+    cameras = []
+    
+    # USB 카메라 감지
+    for i in range(10):  # 최대 10개 카메라 확인
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret:
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                
+                cameras.append({
+                    'id': i,
+                    'type': 'USB',
+                    'resolution': (width, height),
+                    'fps': fps,
+                    'status': 'available'
+                })
+            cap.release()
+    
+    return cameras
+
+def select_optimal_configuration(env_info):
+    """환경 정보를 바탕으로 최적 설정을 선택합니다."""
+    config = {
+        'device': 'cpu',
+        'batch_size': 1,
+        'precision': 'fp32',
+        'num_workers': 1,
+        'memory_fraction': 0.5
+    }
+    
+    # GPU 사용 가능 시 설정
+    if env_info['gpu']['cuda_available']:
+        config.update({
+            'device': 'cuda',
+            'batch_size': min(4, env_info['gpu']['cuda_device_count'] * 2),
+            'precision': 'fp16',
+            'memory_fraction': 0.8
+        })
+    
+    # CPU 코어 수에 따른 워커 조정
+    cpu_cores = env_info['compute']['cpu_count']
+    config['num_workers'] = min(cpu_cores, 8)
+    
+    # 메모리에 따른 배치 크기 조정
+    memory_gb = env_info['compute']['memory_total'] / (1024**3)
+    if memory_gb < 8:
+        config['batch_size'] = max(1, config['batch_size'] // 2)
+    
+    return config
+```
+
+### 플랫폼별 최적화
+```python
+PLATFORM_OPTIMIZATIONS = {
+    'windows': {
+        'opencv_backend': 'DSHOW',
+        'threading_backend': 'TBB',
+        'memory_management': 'automatic',
+        'gpu_scheduling': 'hardware_accelerated'
+    },
+    'linux': {
+        'opencv_backend': 'V4L2',
+        'threading_backend': 'OpenMP',
+        'memory_management': 'manual',
+        'cpu_affinity': True
+    },
+    'jetson': {
+        'opencv_backend': 'GSTREAMER',
+        'threading_backend': 'CUDA',
+        'memory_management': 'unified',
+        'gpu_scheduling': 'cuda_context',
+        'power_mode': 'MAXN',
+        'jetson_clocks': True
+    },
+    'raspberry_pi': {
+        'opencv_backend': 'V4L2',
+        'threading_backend': 'OpenMP',
+        'memory_management': 'conservative',
+        'gpu_memory_split': 128,
+        'camera_interface': 'MMAL'
+    }
+}
+```
+
+## ⚙️ 설정 자동 조정
+
+### 모델 선택 전략
+```python
+def select_model_by_hardware(task, env_info):
+    """하드웨어 환경에 따른 최적 모델 선택"""
+    
+    model_configs = {
+        'detection': {
+            'high_performance': {
+                'model': 'yolov8l',
+                'requirements': {
+                    'gpu_vram': 6,  # GB
+                    'cpu_cores': 8,
+                    'memory': 16  # GB
+                }
+            },
+            'balanced': {
+                'model': 'yolov8m',
+                'requirements': {
+                    'gpu_vram': 4,
+                    'cpu_cores': 4,
+                    'memory': 8
+                }
+            },
+            'lightweight': {
+                'model': 'yolov8n',
+                'requirements': {
+                    'gpu_vram': 2,
+                    'cpu_cores': 2,
+                    'memory': 4
+                }
+            }
+        }
+    }
+    
+    # 하드웨어 성능 평가
+    gpu_vram = get_gpu_memory_gb(env_info)
+    cpu_cores = env_info['compute']['cpu_count']
+    memory_gb = env_info['compute']['memory_total'] / (1024**3)
+    
+    # 모델 선택
+    task_models = model_configs.get(task, {})
+    
+    for performance_level in ['high_performance', 'balanced', 'lightweight']:
+        requirements = task_models[performance_level]['requirements']
+        
+        if (gpu_vram >= requirements['gpu_vram'] and
+            cpu_cores >= requirements['cpu_cores'] and
+            memory_gb >= requirements['memory']):
+            return task_models[performance_level]['model']
+    
+    # 최소 사양 모델 반환
+    return task_models['lightweight']['model']
+
+def get_gpu_memory_gb(env_info):
+    """GPU 메모리 크기 반환 (GB)"""
+    if env_info['gpu']['cuda_available']:
+        try:
+            import torch
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory
+            return gpu_memory / (1024**3)
+        except:
+            return 0
+    return 0
+```
+
+## 🏗️ 플랫폼별 설치 요구사항
+
+### Windows 설치 스크립트
+```batch
+@echo off
+REM Windows 환경 설치 스크립트
+
+echo "비전 시스템 Windows 설치 시작..."
+
+REM Python 버전 확인
+python --version > nul 2>&1
+if %errorlevel% neq 0 (
+    echo "Python이 설치되지 않았습니다. Python 3.8 이상을 설치하세요."
+    exit /b 1
+)
+
+REM Visual C++ Redistributable 확인
+reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" > nul 2>&1
+if %errorlevel% neq 0 (
+    echo "Visual C++ Redistributable가 필요합니다."
+    echo "https://aka.ms/vs/17/release/vc_redist.x64.exe 에서 다운로드하세요."
+)
+
+REM CUDA 설치 확인
+nvcc --version > nul 2>&1
+if %errorlevel% equ 0 (
+    echo "CUDA가 감지되었습니다."
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+) else (
+    echo "CUDA가 감지되지 않았습니다. CPU 버전을 설치합니다."
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+)
+
+REM 의존성 설치
+pip install -r config/requirements/requirements_windows.txt
+
+echo "설치 완료!"
+```
+
+### Linux 설치 스크립트
+```bash
+#!/bin/bash
+# Linux 환경 설치 스크립트
+
+echo "비전 시스템 Linux 설치 시작..."
+
+# Python 버전 확인
+python3 --version >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "Python3가 설치되지 않았습니다."
+    echo "Ubuntu: sudo apt-get install python3 python3-pip"
+    echo "CentOS: sudo yum install python3 python3-pip"
+    exit 1
+fi
+
+# 시스템 패키지 설치
+if command -v apt-get >/dev/null 2>&1; then
+    # Ubuntu/Debian
+    sudo apt-get update
+    sudo apt-get install -y python3-dev libgl1-mesa-glx libglib2.0-0
+    sudo apt-get install -y v4l-utils  # 카메라 지원
+elif command -v yum >/dev/null 2>&1; then
+    # CentOS/RHEL
+    sudo yum install -y python3-devel mesa-libGL glib2
+    sudo yum install -y v4l-utils
+fi
+
+# CUDA 확인
+if command -v nvcc >/dev/null 2>&1; then
+    echo "CUDA가 감지되었습니다."
+    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+else
+    echo "CUDA가 감지되지 않았습니다. CPU 버전을 설치합니다."
+    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+fi
+
+# 의존성 설치
+pip3 install -r config/requirements/requirements_linux.txt
+
+echo "설치 완료!"
+```
+
+### Jetson 설치 스크립트
+```bash
+#!/bin/bash
+# Jetson 환경 설치 스크립트
+
+echo "비전 시스템 Jetson 설치 시작..."
+
+# JetPack 버전 확인
+if [ ! -f /etc/nv_tegra_release ]; then
+    echo "Jetson 플랫폼이 감지되지 않았습니다."
+    exit 1
+fi
+
+JETPACK_VERSION=$(cat /etc/nv_tegra_release | grep -o 'R[0-9]*')
+echo "JetPack 버전: $JETPACK_VERSION"
+
+# 시스템 업데이트
+sudo apt-get update
+
+# 필수 패키지 설치
+sudo apt-get install -y python3-pip python3-dev
+sudo apt-get install -y libhdf5-serial-dev hdf5-tools
+sudo apt-get install -y libhdf5-dev zlib1g-dev zip libjpeg8-dev
+
+# Jetson에 최적화된 PyTorch 설치
+if [ "$JETPACK_VERSION" = "R35" ] || [ "$JETPACK_VERSION" = "R34" ]; then
+    # JetPack 5.x
+    pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+elif [ "$JETPACK_VERSION" = "R32" ]; then
+    # JetPack 4.x
+    wget https://nvidia.box.com/shared/static/p57jwntv436lfrd78inwl7iml6p13fzh.whl -O torch-1.8.0-cp36-cp36m-linux_aarch64.whl
+    pip3 install torch-1.8.0-cp36-cp36m-linux_aarch64.whl
+fi
+
+# Jetson 전용 의존성 설치
+pip3 install -r config/requirements/requirements_jetson.txt
+
+# Jetson Clocks 활성화 (성능 최적화)
+sudo jetson_clocks
+
+echo "Jetson 설치 완료!"
+```
+
+## 🔧 성능 모니터링
+
+### 실시간 성능 메트릭
+```python
+import time
+import psutil
+import threading
+
+class PerformanceMonitor:
+    """실시간 성능 모니터링 클래스"""
+    
+    def __init__(self, interval=1.0):
+        self.interval = interval
+        self.monitoring = False
+        self.metrics = {
+            'cpu_percent': [],
+            'memory_percent': [],
+            'gpu_memory_used': [],
+            'fps': [],
+            'latency': []
+        }
+        
+    def start_monitoring(self):
+        """모니터링 시작"""
+        self.monitoring = True
+        self.monitor_thread = threading.Thread(target=self._monitor_loop)
+        self.monitor_thread.daemon = True
+        self.monitor_thread.start()
+        
+    def stop_monitoring(self):
+        """모니터링 중지"""
+        self.monitoring = False
+        if hasattr(self, 'monitor_thread'):
+            self.monitor_thread.join()
+            
+    def _monitor_loop(self):
+        """모니터링 루프"""
+        while self.monitoring:
+            # CPU 사용률
+            cpu_percent = psutil.cpu_percent(interval=None)
+            self.metrics['cpu_percent'].append(cpu_percent)
+            
+            # 메모리 사용률
+            memory_percent = psutil.virtual_memory().percent
+            self.metrics['memory_percent'].append(memory_percent)
+            
+            # GPU 메모리 (CUDA 사용 시)
+            if torch.cuda.is_available():
+                gpu_memory = torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()
+                self.metrics['gpu_memory_used'].append(gpu_memory * 100)
+            
+            time.sleep(self.interval)
+            
+    def get_current_metrics(self):
+        """현재 메트릭 반환"""
+        if not self.metrics['cpu_percent']:
+            return None
+            
+        return {
+            'cpu_percent': self.metrics['cpu_percent'][-1],
+            'memory_percent': self.metrics['memory_percent'][-1],
+            'gpu_memory_used': self.metrics['gpu_memory_used'][-1] if self.metrics['gpu_memory_used'] else 0
+        }
+```
+
+## ⚠️ 하드웨어 관련 금지 사항
+
+1. **절대 금지**: 하드웨어 요구사항 확인 없이 프로그램 실행
+2. **절대 금지**: GPU 메모리 부족 시 적절한 오류 처리 누락
+3. **절대 금지**: 플랫폼별 최적화 설정 무시
+4. **절대 금지**: 카메라 장치 점유 후 해제 누락
+5. **절대 금지**: 성능 모니터링 없는 장시간 실행
+6. **절대 금지**: 메모리 누수 방지 장치 없는 반복 처리
+7. **절대 금지**: 하드웨어 호환성 확인 없는 모델 로드
+8. **절대 금지**: 환경별 의존성 패키지 혼용 설치
+
+이 모든 하드웨어 관련 규칙을 준수하여 안정적이고 최적화된 시스템을 구축하세요.
+
+## 🤖 앙상블 모델 관리 규칙
+
+### 앙상블 전략 정의
+```python
+# common/models/ensemble_manager.py
+from typing import Dict, List, Any, Optional
+import torch
+import numpy as np
+
+class EnsembleManager:
+    """앙상블 모델 관리 클래스"""
+    
+    ENSEMBLE_STRATEGIES = {
+        'voting': {
+            'description': '다수결 투표 방식',
+            'weight_by_confidence': True,
+            'min_models': 3
+        },
+        'averaging': {
+            'description': '확률 평균 방식',
+            'weighted': True,
+            'softmax': True
+        },
+        'stacking': {
+            'description': '메타 모델 학습',
+            'meta_model': 'lightgbm',
+            'cross_validation': 5
+        },
+        'cascade': {
+            'description': '계층적 앙상블',
+            'confidence_threshold': 0.7
+        }
+    }
+    
+    def __init__(self, strategy: str = 'voting'):
+        self.strategy = strategy
+        self.models = []
+        self.weights = []
+        self.strategy_config = self.ENSEMBLE_STRATEGIES[strategy]
+    
+    def add_model(self, model, weight: float = 1.0, conf_threshold: float = 0.5):
+        """모델 추가"""
+        self.models.append({
+            'model': model,
+            'weight': weight,
+            'conf_threshold': conf_threshold
+        })
+        self.weights.append(weight)
+    
+    def predict(self, input_data):
+        """앙상블 예측"""
+        if self.strategy == 'voting':
+            return self._voting_predict(input_data)
+        elif self.strategy == 'averaging':
+            return self._averaging_predict(input_data)
+        elif self.strategy == 'cascade':
+            return self._cascade_predict(input_data)
+        else:
+            raise ValueError(f"지원하지 않는 전략: {self.strategy}")
+    
+    def _voting_predict(self, input_data):
+        """다수결 투표 예측"""
+        predictions = []
+        confidences = []
+        
+        for model_info in self.models:
+            pred = model_info['model'].predict(input_data)
+            predictions.append(pred)
+            confidences.append(pred.get('confidence', 0.5))
+        
+        # 가중치 적용 투표
+        if self.strategy_config['weight_by_confidence']:
+            weights = [conf * weight for conf, weight in zip(confidences, self.weights)]
+        else:
+            weights = self.weights
+        
+        # 최종 예측 결합
+        return self._combine_predictions(predictions, weights)
+    
+    def _averaging_predict(self, input_data):
+        """평균 예측"""
+        predictions = []
+        
+        for model_info in self.models:
+            pred = model_info['model'].predict(input_data)
+            predictions.append(pred)
+        
+        # 가중 평균
+        if self.strategy_config['weighted']:
+            return self._weighted_average(predictions, self.weights)
+        else:
+            return self._simple_average(predictions)
+    
+    def _cascade_predict(self, input_data):
+        """계층적 예측"""
+        for i, model_info in enumerate(self.models):
+            pred = model_info['model'].predict(input_data)
+            
+            # 신뢰도가 임계값 이상이면 결과 반환
+            if pred.get('confidence', 0) >= self.strategy_config['confidence_threshold']:
+                pred['used_models'] = i + 1
+                return pred
+        
+        # 모든 모델을 사용해도 신뢰도가 낮으면 마지막 결과 반환
+        pred['used_models'] = len(self.models)
+        pred['low_confidence_warning'] = True
+        return pred
+
+# 객체 감지 앙상블 설정 예시
+OBJECT_DETECTION_ENSEMBLE = {
+    'models': [
+        {'model_id': 'yolov8x', 'weight': 0.4, 'conf_threshold': 0.45},
+        {'model_id': 'rt_detr_r50vd', 'weight': 0.3, 'conf_threshold': 0.4},
+        {'model_id': 'faster_rcnn', 'weight': 0.2, 'conf_threshold': 0.5},
+        {'model_id': 'ssd_mobilenet', 'weight': 0.1, 'conf_threshold': 0.5}
+    ],
+    'strategy': 'voting',
+    'iou_threshold': 0.5,
+    'weighted_box_fusion': True
+}
+```
+
+### 하드웨어 기반 앙상블 최적화
+```python
+def optimize_ensemble_for_hardware():
+    """하드웨어 환경에 따른 앙상블 최적화"""
+    
+    hardware_info = analyze_environment()
+    
+    if hardware_info['hardware'].get('gpu', {}).get('available', False):
+        # GPU 환경: 더 많은 모델 사용 가능
+        gpu_memory = hardware_info['hardware']['gpu']['memory_gb']
+        
+        if gpu_memory >= 8:
+            # 고성능 GPU: 4개 모델 앙상블
+            return {
+                'models': ['yolov8x', 'rt_detr_r50vd', 'faster_rcnn', 'efficientdet_d7'],
+                'strategy': 'voting',
+                'batch_size': 4
+            }
+        elif gpu_memory >= 4:
+            # 중간 성능 GPU: 3개 모델 앙상블
+            return {
+                'models': ['yolov8l', 'rt_detr_r18', 'faster_rcnn'],
+                'strategy': 'averaging',
+                'batch_size': 2
+            }
+        else:
+            # 저성능 GPU: 2개 모델 앙상블
+            return {
+                'models': ['yolov8m', 'ssd_mobilenet'],
+                'strategy': 'cascade',
+                'batch_size': 1
+            }
+    else:
+        # CPU 환경: 경량 모델만 사용
+        cpu_cores = hardware_info['hardware']['cpu']['cores']
+        
+        if cpu_cores >= 8:
+            return {
+                'models': ['yolov8n', 'ssd_mobilenet'],
+                'strategy': 'cascade',
+                'batch_size': 1
+            }
+        else:
+            # 단일 모델 사용 권장
+            return {
+                'models': ['yolov8n'],
+                'strategy': 'single',
+                'batch_size': 1
+            }
+```
+
+## 💾 클라우드 스토리지 연동 규칙
+
+### 클라우드 스토리지 설정
+```python
+# common/storage/cloud_storage.py
+import os
+import boto3
+from azure.storage.blob import BlobServiceClient
+from google.cloud import storage as gcs
+from abc import ABC, abstractmethod
+
+class CloudStorageInterface(ABC):
+    """클라우드 스토리지 인터페이스"""
+    
+    @abstractmethod
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        pass
+    
+    @abstractmethod
+    def download_file(self, remote_path: str, local_path: str) -> bool:
+        pass
+    
+    @abstractmethod
+    def list_files(self, prefix: str = "") -> List[str]:
+        pass
+
+class AWSStorage(CloudStorageInterface):
+    """AWS S3 스토리지"""
+    
+    def __init__(self, bucket_name: str, region: str = 'us-east-1'):
+        self.bucket_name = bucket_name
+        self.s3_client = boto3.client(
+            's3',
+            region_name=region,
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_KEY')
+        )
+    
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        try:
+            self.s3_client.upload_file(local_path, self.bucket_name, remote_path)
+            return True
+        except Exception as e:
+            print(f"AWS 업로드 실패: {e}")
+            return False
+    
+    def download_file(self, remote_path: str, local_path: str) -> bool:
+        try:
+            self.s3_client.download_file(self.bucket_name, remote_path, local_path)
+            return True
+        except Exception as e:
+            print(f"AWS 다운로드 실패: {e}")
+            return False
+
+class AzureStorage(CloudStorageInterface):
+    """Azure Blob Storage"""
+    
+    def __init__(self, container_name: str):
+        self.container_name = container_name
+        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        self.blob_service = BlobServiceClient.from_connection_string(connection_string)
+    
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        try:
+            blob_client = self.blob_service.get_blob_client(
+                container=self.container_name, 
+                blob=remote_path
+            )
+            with open(local_path, 'rb') as data:
+                blob_client.upload_blob(data, overwrite=True)
+            return True
+        except Exception as e:
+            print(f"Azure 업로드 실패: {e}")
+            return False
+
+class GCPStorage(CloudStorageInterface):
+    """Google Cloud Storage"""
+    
+    def __init__(self, bucket_name: str):
+        self.bucket_name = bucket_name
+        credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        self.client = gcs.Client.from_service_account_json(credentials_path)
+        self.bucket = self.client.bucket(bucket_name)
+    
+    def upload_file(self, local_path: str, remote_path: str) -> bool:
+        try:
+            blob = self.bucket.blob(remote_path)
+            blob.upload_from_filename(local_path)
+            return True
+        except Exception as e:
+            print(f"GCP 업로드 실패: {e}")
+            return False
+
+# 클라우드 스토리지 팩토리
+def create_cloud_storage(provider: str, **config) -> CloudStorageInterface:
+    """클라우드 스토리지 생성"""
+    if provider == 'aws':
+        return AWSStorage(config['bucket'], config.get('region', 'us-east-1'))
+    elif provider == 'azure':
+        return AzureStorage(config['container'])
+    elif provider == 'gcp':
+        return GCPStorage(config['bucket'])
+    else:
+        raise ValueError(f"지원하지 않는 프로바이더: {provider}")
+
+# 사용 예시
+CLOUD_STORAGE_CONFIG = {
+    'aws': {
+        'bucket': 'vision-system-data',
+        'region': 'us-east-1',
+        'path_prefix': 'data/'
+    },
+    'azure': {
+        'container': 'vision-system-data',
+        'path_prefix': 'data/'
+    },
+    'gcp': {
+        'bucket': 'vision-system-data',
+        'path_prefix': 'data/'
+    }
+}
+```
+
+### 자동 백업 시스템
+```python
+# common/storage/backup_manager.py
+import os
+import shutil
+import gzip
+import schedule
+import time
+import logging
+from datetime import datetime, timedelta
+from pathlib import Path
+
+class BackupManager:
+    """자동 백업 관리 클래스"""
+    
+    def __init__(self, config: dict):
+        self.config = config
+        self.enabled = config.get('enabled', True)
+        self.retention_days = config.get('retention_days', 30)
+        self.compression = config.get('compression', True)
+        self.include_patterns = config.get('include_patterns', [])
+        self.exclude_patterns = config.get('exclude_patterns', [])
+        self.backup_dir = Path(config.get('backup_dir', 'data/backups'))
+        self.logger = logging.getLogger(__name__)
+        
+        # 백업 디렉토리 생성
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+    
+    def setup_schedule(self):
+        """백업 스케줄 설정"""
+        if not self.enabled:
+            return
+        
+        schedule_str = self.config.get('schedule', '0 2 * * *')  # 매일 02:00
+        
+        # Cron 형식을 schedule 라이브러리 형식으로 변환
+        if schedule_str == '0 2 * * *':
+            schedule.every().day.at("02:00").do(self.run_backup)
+        elif schedule_str == '0 */6 * * *':
+            schedule.every(6).hours.do(self.run_backup)
+        
+        self.logger.info(f"백업 스케줄 설정: {schedule_str}")
+    
+    def run_backup(self):
+        """백업 실행"""
+        if not self.enabled:
+            return
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_name = f"backup_{timestamp}"
+        backup_path = self.backup_dir / backup_name
+        
+        self.logger.info(f"백업 시작: {backup_path}")
+        
+        try:
+            # 백업 디렉토리 생성
+            backup_path.mkdir(exist_ok=True)
+            
+            # 파일 백업
+            backed_up_files = 0
+            for pattern in self.include_patterns:
+                for file_path in Path('.').rglob(pattern):
+                    if self._should_backup(file_path):
+                        self._backup_file(file_path, backup_path)
+                        backed_up_files += 1
+            
+            # 압축
+            if self.compression:
+                self._compress_backup(backup_path)
+            
+            # 오래된 백업 정리
+            self._cleanup_old_backups()
+            
+            self.logger.info(f"백업 완료: {backed_up_files}개 파일")
+            
+        except Exception as e:
+            self.logger.error(f"백업 실패: {e}")
+    
+    def _should_backup(self, file_path: Path) -> bool:
+        """백업 대상 확인"""
+        # 제외 패턴 확인
+        for exclude_pattern in self.exclude_patterns:
+            if file_path.match(exclude_pattern):
+                return False
+        return True
+    
+    def _backup_file(self, source: Path, backup_dir: Path):
+        """파일 백업"""
+        relative_path = source.relative_to('.')
+        target_path = backup_dir / relative_path
+        
+        # 디렉토리 생성
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 파일 복사
+        shutil.copy2(source, target_path)
+    
+    def _compress_backup(self, backup_path: Path):
+        """백업 압축"""
+        archive_path = backup_path.with_suffix('.tar.gz')
+        
+        import tarfile
+        with tarfile.open(archive_path, 'w:gz') as tar:
+            tar.add(backup_path, arcname=backup_path.name)
+        
+        # 원본 디렉토리 삭제
+        shutil.rmtree(backup_path)
+        
+        self.logger.info(f"백업 압축 완료: {archive_path}")
+    
+    def _cleanup_old_backups(self):
+        """오래된 백업 정리"""
+        cutoff_date = datetime.now() - timedelta(days=self.retention_days)
+        
+        for backup_file in self.backup_dir.iterdir():
+            if backup_file.is_file() and backup_file.name.startswith('backup_'):
+                file_time = datetime.fromtimestamp(backup_file.stat().st_mtime)
+                if file_time < cutoff_date:
+                    backup_file.unlink()
+                    self.logger.info(f"오래된 백업 삭제: {backup_file}")
+
+# 백업 설정 예시
+BACKUP_CONFIG = {
+    'enabled': True,
+    'schedule': '0 2 * * *',  # 매일 02:00
+    'retention_days': 30,
+    'compression': True,
+    'include_patterns': ['*.db', 'results/*.json', 'config/*.yaml'],
+    'exclude_patterns': ['*.tmp', 'cache/*', 'temp/*'],
+    'backup_dir': 'data/backups'
+}
+```
+
+### 클라우드 동기화
+```python
+def sync_to_cloud(cloud_provider: str, local_path: str, remote_path: str):
+    """로컬 데이터를 클라우드와 동기화"""
+    
+    storage = create_cloud_storage(
+        cloud_provider, 
+        **CLOUD_STORAGE_CONFIG[cloud_provider]
+    )
+    
+    # 파일 업로드
+    success = storage.upload_file(local_path, remote_path)
+    
+    if success:
+        logging.info(f"클라우드 동기화 성공: {local_path} -> {remote_path}")
+    else:
+        logging.error(f"클라우드 동기화 실패: {local_path}")
+    
+    return success
+```
+
+## 🤖 모델 네이밍 및 버전 관리
+
+### 모델 파일 명명 규칙
+체계적인 모델 파일 명명 규칙을 통해 모델의 용도, 아키텍처, 버전을 명확히 식별할 수 있습니다.
+
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+모델 네이밍 및 버전 관리 시스템
+
+모델 파일의 체계적인 명명과 버전 관리를 위한 시스템입니다.
+"""
+
+import os
+import re
+import json
+import hashlib
+import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, asdict
+from enum import Enum
+
+
+class ModelType(Enum):
+    """모델 타입"""
+    DETECTION = "detection"
+    CLASSIFICATION = "classification"
+    SEGMENTATION = "segmentation"
+    FACE_RECOGNITION = "face_recognition"
+    EMOTION_RECOGNITION = "emotion_recognition"
+    POSE_ESTIMATION = "pose_estimation"
+    ANOMALY_DETECTION = "anomaly_detection"
+
+
+class ModelFramework(Enum):
+    """모델 프레임워크"""
+    PYTORCH = "pytorch"
+    ONNX = "onnx"
+    TENSORRT = "tensorrt"
+    TENSORFLOW = "tensorflow"
+    OPENVINO = "openvino"
+
+
+class ModelArchitecture(Enum):
+    """모델 아키텍처"""
+    YOLOV8 = "yolov8"
+    YOLOV5 = "yolov5"
+    EFFICIENTDET = "efficientdet"
+    RESNET = "resnet"
+    MOBILENET = "mobilenet"
+    TRANSFORMER = "transformer"
+    CUSTOM = "custom"
+
+
+@dataclass
+class ModelMetadata:
+    """모델 메타데이터"""
+    # 기본 정보
+    name: str
+    version: str
+    model_type: ModelType
+    architecture: ModelArchitecture
+    framework: ModelFramework
+    
+    # 파일 정보
+    file_path: str
+    file_size: int
+    file_hash: str
+    created_date: str
+    modified_date: str
+    
+    # 성능 정보
+    accuracy: Optional[float] = None
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+    f1_score: Optional[float] = None
+    inference_time_ms: Optional[float] = None
+    model_size_mb: Optional[float] = None
+    
+    # 훈련 정보
+    dataset_name: Optional[str] = None
+    dataset_version: Optional[str] = None
+    training_epochs: Optional[int] = None
+    batch_size: Optional[int] = None
+    learning_rate: Optional[float] = None
+    
+    # 하드웨어 요구사항
+    min_gpu_memory_gb: Optional[float] = None
+    min_cpu_cores: Optional[int] = None
+    min_ram_gb: Optional[float] = None
+    
+    # 전처리 정보
+    input_size: Optional[Tuple[int, int]] = None
+    mean: Optional[Tuple[float, float, float]] = None
+    std: Optional[Tuple[float, float, float]] = None
+    
+    # 기타
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    author: Optional[str] = None
+    license: Optional[str] = None
+
+
+class ModelNamingManager:
+    """모델 네이밍 관리자"""
+    
+    # 네이밍 패턴: {task}_{architecture}_{dataset}_{version}_{date}.{ext}
+    NAMING_PATTERN = r"^(?P<task>\w+)_(?P<architecture>\w+)_(?P<dataset>\w+)_(?P<version>v\d+\.\d+\.\d+)_(?P<date>\d{8})\.(?P<ext>\w+)$"
+    
+    def __init__(self, models_dir: str = "models/weights"):
+        self.models_dir = Path(models_dir)
+        self.models_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.metadata_dir = self.models_dir.parent / "metadata"
+        self.metadata_dir.mkdir(exist_ok=True)
+    
+    def generate_model_name(self, 
+                          task: str,
+                          architecture: str, 
+                          dataset: str,
+                          version: str = "v1.0.0",
+                          extension: str = "pt") -> str:
+        """모델 파일명 생성"""
+        date_str = datetime.datetime.now().strftime("%Y%m%d")
+        return f"{task}_{architecture}_{dataset}_{version}_{date_str}.{extension}"
+    
+    def parse_model_name(self, filename: str) -> Optional[Dict[str, str]]:
+        """모델 파일명 파싱"""
+        match = re.match(self.NAMING_PATTERN, filename)
+        if match:
+            return match.groupdict()
+        return None
+    
+    def validate_model_name(self, filename: str) -> bool:
+        """모델 파일명 유효성 검증"""
+        return self.parse_model_name(filename) is not None
+    
+    def increment_version(self, version: str, increment_type: str = "patch") -> str:
+        """버전 증가"""
+        # v1.2.3 형식에서 숫자 추출
+        match = re.match(r"v(\d+)\.(\d+)\.(\d+)", version)
+        if not match:
+            return "v1.0.0"
+        
+        major, minor, patch = map(int, match.groups())
+        
+        if increment_type == "major":
+            major += 1
+            minor = 0
+            patch = 0
+        elif increment_type == "minor":
+            minor += 1
+            patch = 0
+        else:  # patch
+            patch += 1
+        
+        return f"v{major}.{minor}.{patch}"
+    
+    def get_latest_version(self, task: str, architecture: str, dataset: str) -> str:
+        """최신 버전 조회"""
+        pattern = f"{task}_{architecture}_{dataset}_v*"
+        matching_files = list(self.models_dir.glob(pattern))
+        
+        if not matching_files:
+            return "v1.0.0"
+        
+        versions = []
+        for file_path in matching_files:
+            parsed = self.parse_model_name(file_path.name)
+            if parsed:
+                versions.append(parsed['version'])
+        
+        if not versions:
+            return "v1.0.0"
+        
+        # 버전 정렬 (v1.0.0 형식)
+        def version_key(v):
+            match = re.match(r"v(\d+)\.(\d+)\.(\d+)", v)
+            return tuple(map(int, match.groups())) if match else (0, 0, 0)
+        
+        latest = max(versions, key=version_key)
+        return self.increment_version(latest, "patch")
+```
+
+## 🎯 앙상블 모델 관리
+
+### 앙상블 전략 구현
+다양한 앙상블 전략을 통해 모델 성능을 향상시킬 수 있습니다.
+
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+앙상블 모델 관리 시스템
+
+여러 모델을 조합하여 더 나은 성능을 달성하기 위한 앙상블 시스템입니다.
+"""
+
+import numpy as np
+import torch
+from typing import List, Dict, Any, Optional, Callable
+from enum import Enum
+from abc import ABC, abstractmethod
+
+
+class EnsembleStrategy(Enum):
+    """앙상블 전략"""
+    VOTING = "voting"
+    AVERAGING = "averaging"
+    STACKING = "stacking"
+    CASCADE = "cascade"
+
+
+class BaseEnsemble(ABC):
+    """앙상블 기본 클래스"""
+    
+    def __init__(self, models: List[Any], weights: Optional[List[float]] = None):
+        self.models = models
+        self.weights = weights or [1.0 / len(models)] * len(models)
+        self.num_models = len(models)
+    
+    @abstractmethod
+    def predict(self, inputs: Any) -> Any:
+        """앙상블 예측"""
+        pass
+    
+    def validate_inputs(self, inputs: Any) -> bool:
+        """입력 검증"""
+        return inputs is not None
+
+
+class VotingEnsemble(BaseEnsemble):
+    """투표 기반 앙상블"""
+    
+    def __init__(self, models: List[Any], voting_type: str = "hard", weights: Optional[List[float]] = None):
+        super().__init__(models, weights)
+        self.voting_type = voting_type  # "hard" or "soft"
+    
+    def predict(self, inputs: Any) -> Any:
+        """투표 기반 예측"""
+        predictions = []
+        
+        for model in self.models:
+            pred = model(inputs)
+            predictions.append(pred)
+        
+        if self.voting_type == "hard":
+            return self._hard_voting(predictions)
+        else:
+            return self._soft_voting(predictions)
+    
+    def _hard_voting(self, predictions: List[Any]) -> Any:
+        """하드 투표 (다수결)"""
+        # 각 예측을 클래스로 변환 후 투표
+        class_predictions = []
+        for pred in predictions:
+            if isinstance(pred, torch.Tensor):
+                class_pred = torch.argmax(pred, dim=-1)
+            else:
+                class_pred = np.argmax(pred, axis=-1)
+            class_predictions.append(class_pred)
+        
+        # 다수결 투표
+        if isinstance(class_predictions[0], torch.Tensor):
+            stacked = torch.stack(class_predictions, dim=0)
+            return torch.mode(stacked, dim=0)[0]
+        else:
+            stacked = np.stack(class_predictions, axis=0)
+            return np.apply_along_axis(lambda x: np.bincount(x).argmax(), axis=0, arr=stacked)
+    
+    def _soft_voting(self, predictions: List[Any]) -> Any:
+        """소프트 투표 (확률 평균)"""
+        weighted_preds = []
+        
+        for pred, weight in zip(predictions, self.weights):
+            if isinstance(pred, torch.Tensor):
+                weighted_pred = pred * weight
+            else:
+                weighted_pred = pred * weight
+            weighted_preds.append(weighted_pred)
+        
+        if isinstance(weighted_preds[0], torch.Tensor):
+            return torch.sum(torch.stack(weighted_preds, dim=0), dim=0)
+        else:
+            return np.sum(np.stack(weighted_preds, axis=0), axis=0)
+
+
+class AveragingEnsemble(BaseEnsemble):
+    """평균 기반 앙상블"""
+    
+    def __init__(self, models: List[Any], averaging_type: str = "arithmetic", weights: Optional[List[float]] = None):
+        super().__init__(models, weights)
+        self.averaging_type = averaging_type  # "arithmetic", "geometric", "harmonic"
+    
+    def predict(self, inputs: Any) -> Any:
+        """평균 기반 예측"""
+        predictions = []
+        
+        for model in self.models:
+            pred = model(inputs)
+            predictions.append(pred)
+        
+        if self.averaging_type == "arithmetic":
+            return self._arithmetic_mean(predictions)
+        elif self.averaging_type == "geometric":
+            return self._geometric_mean(predictions)
+        elif self.averaging_type == "harmonic":
+            return self._harmonic_mean(predictions)
+    
+    def _arithmetic_mean(self, predictions: List[Any]) -> Any:
+        """산술 평균"""
+        weighted_preds = []
+        
+        for pred, weight in zip(predictions, self.weights):
+            weighted_preds.append(pred * weight)
+        
+        if isinstance(weighted_preds[0], torch.Tensor):
+            return torch.sum(torch.stack(weighted_preds, dim=0), dim=0)
+        else:
+            return np.sum(np.stack(weighted_preds, axis=0), axis=0)
+    
+    def _geometric_mean(self, predictions: List[Any]) -> Any:
+        """기하 평균"""
+        if isinstance(predictions[0], torch.Tensor):
+            product = torch.ones_like(predictions[0])
+            for pred, weight in zip(predictions, self.weights):
+                product *= torch.pow(pred, weight)
+            return product
+        else:
+            product = np.ones_like(predictions[0])
+            for pred, weight in zip(predictions, self.weights):
+                product *= np.power(pred, weight)
+            return product
+    
+    def _harmonic_mean(self, predictions: List[Any]) -> Any:
+        """조화 평균"""
+        if isinstance(predictions[0], torch.Tensor):
+            reciprocal_sum = torch.zeros_like(predictions[0])
+            for pred, weight in zip(predictions, self.weights):
+                reciprocal_sum += weight / pred
+            return len(predictions) / reciprocal_sum
+        else:
+            reciprocal_sum = np.zeros_like(predictions[0])
+            for pred, weight in zip(predictions, self.weights):
+                reciprocal_sum += weight / pred
+            return len(predictions) / reciprocal_sum
+
+
+class StackingEnsemble(BaseEnsemble):
+    """스태킹 앙상블"""
+    
+    def __init__(self, base_models: List[Any], meta_model: Any, use_original_features: bool = True):
+        super().__init__(base_models)
+        self.meta_model = meta_model
+        self.use_original_features = use_original_features
+        self.is_trained = False
+    
+    def fit(self, X_train: Any, y_train: Any, X_val: Any, y_val: Any):
+        """메타 모델 훈련"""
+        # 베이스 모델들의 예측 수집
+        base_predictions_train = self._get_base_predictions(X_train)
+        base_predictions_val = self._get_base_predictions(X_val)
+        
+        # 메타 피처 구성
+        meta_features_train = self._construct_meta_features(base_predictions_train, X_train)
+        meta_features_val = self._construct_meta_features(base_predictions_val, X_val)
+        
+        # 메타 모델 훈련
+        self.meta_model.fit(meta_features_train, y_train)
+        self.is_trained = True
+        
+        # 검증 성능 반환
+        val_pred = self.meta_model.predict(meta_features_val)
+        return val_pred
+    
+    def predict(self, inputs: Any) -> Any:
+        """스태킹 예측"""
+        if not self.is_trained:
+            raise ValueError("Meta model is not trained. Call fit() first.")
+        
+        base_predictions = self._get_base_predictions(inputs)
+        meta_features = self._construct_meta_features(base_predictions, inputs)
+        
+        return self.meta_model.predict(meta_features)
+    
+    def _get_base_predictions(self, inputs: Any) -> List[Any]:
+        """베이스 모델들의 예측 수집"""
+        predictions = []
+        for model in self.models:
+            pred = model(inputs)
+            predictions.append(pred)
+        return predictions
+    
+    def _construct_meta_features(self, base_predictions: List[Any], original_features: Any) -> Any:
+        """메타 피처 구성"""
+        if isinstance(base_predictions[0], torch.Tensor):
+            meta_features = torch.cat(base_predictions, dim=-1)
+            if self.use_original_features:
+                meta_features = torch.cat([meta_features, original_features], dim=-1)
+        else:
+            meta_features = np.concatenate(base_predictions, axis=-1)
+            if self.use_original_features:
+                meta_features = np.concatenate([meta_features, original_features], axis=-1)
+        
+        return meta_features
+
+
+class CascadeEnsemble(BaseEnsemble):
+    """캐스케이드 앙상블"""
+    
+    def __init__(self, models: List[Any], thresholds: List[float]):
+        super().__init__(models)
+        self.thresholds = thresholds
+        if len(models) != len(thresholds) + 1:
+            raise ValueError("Number of thresholds should be one less than number of models")
+    
+    def predict(self, inputs: Any) -> Any:
+        """캐스케이드 예측"""
+        current_inputs = inputs
+        
+        for i, (model, threshold) in enumerate(zip(self.models[:-1], self.thresholds)):
+            predictions = model(current_inputs)
+            
+            # 신뢰도 기반 필터링
+            confident_mask = self._get_confident_predictions(predictions, threshold)
+            
+            if confident_mask.sum() == len(predictions):
+                # 모든 예측이 신뢰도를 만족하면 반환
+                return predictions
+            
+            # 신뢰도가 낮은 샘플들만 다음 모델로 전달
+            current_inputs = self._filter_inputs(current_inputs, ~confident_mask)
+        
+        # 마지막 모델로 나머지 예측
+        final_predictions = self.models[-1](mdc:current_inputs)
+        return final_predictions
+    
+    def _get_confident_predictions(self, predictions: Any, threshold: float) -> Any:
+        """신뢰도가 높은 예측 식별"""
+        if isinstance(predictions, torch.Tensor):
+            max_probs = torch.max(torch.softmax(predictions, dim=-1), dim=-1)[0]
+            return max_probs > threshold
+        else:
+            max_probs = np.max(predictions, axis=-1)
+            return max_probs > threshold
+    
+    def _filter_inputs(self, inputs: Any, mask: Any) -> Any:
+        """마스크에 따라 입력 필터링"""
+        if isinstance(inputs, torch.Tensor):
+            return inputs[mask]
+        else:
+            return inputs[mask]
+
+
+class EnsembleManager:
+    """앙상블 관리자"""
+    
+    def __init__(self):
+        self.ensembles: Dict[str, BaseEnsemble] = {}
+        self.performance_history: Dict[str, List[float]] = {}
+    
+    def create_ensemble(self, 
+                       name: str,
+                       strategy: EnsembleStrategy,
+                       models: List[Any],
+                       **kwargs) -> BaseEnsemble:
+        """앙상블 생성"""
+        if strategy == EnsembleStrategy.VOTING:
+            ensemble = VotingEnsemble(models, **kwargs)
+        elif strategy == EnsembleStrategy.AVERAGING:
+            ensemble = AveragingEnsemble(models, **kwargs)
+        elif strategy == EnsembleStrategy.STACKING:
+            ensemble = StackingEnsemble(models, **kwargs)
+        elif strategy == EnsembleStrategy.CASCADE:
+            ensemble = CascadeEnsemble(models, **kwargs)
+        else:
+            raise ValueError(f"Unknown ensemble strategy: {strategy}")
+        
+        self.ensembles[name] = ensemble
+        self.performance_history[name] = []
+        
+        return ensemble
+    
+    def get_ensemble(self, name: str) -> Optional[BaseEnsemble]:
+        """앙상블 조회"""
+        return self.ensembles.get(name)
+    
+    def evaluate_ensemble(self, name: str, test_data: Any, test_labels: Any) -> float:
+        """앙상블 성능 평가"""
+        ensemble = self.get_ensemble(name)
+        if not ensemble:
+            raise ValueError(f"Ensemble '{name}' not found")
+        
+        predictions = ensemble.predict(test_data)
+        accuracy = self._calculate_accuracy(predictions, test_labels)
+        
+        self.performance_history[name].append(accuracy)
+        return accuracy
+    
+    def _calculate_accuracy(self, predictions: Any, labels: Any) -> float:
+        """정확도 계산"""
+        if isinstance(predictions, torch.Tensor):
+            pred_classes = torch.argmax(predictions, dim=-1)
+            correct = (pred_classes == labels).float().mean().item()
+        else:
+            pred_classes = np.argmax(predictions, axis=-1)
+            correct = np.mean(pred_classes == labels)
+        
+        return correct
+    
+    def get_best_ensemble(self) -> Tuple[str, float]:
+        """최고 성능 앙상블 조회"""
+        best_name = None
+        best_performance = 0.0
+        
+        for name, history in self.performance_history.items():
+            if history:
+                avg_performance = np.mean(history)
+                if avg_performance > best_performance:
+                    best_performance = avg_performance
+                    best_name = name
+        
+        return best_name, best_performance
+    
+    def optimize_ensemble_weights(self, name: str, validation_data: Any, validation_labels: Any):
+        """앙상블 가중치 최적화"""
+        ensemble = self.get_ensemble(name)
+        if not ensemble or not hasattr(ensemble, 'weights'):
+            return
+        
+        from scipy.optimize import minimize
+        
+        def objective(weights):
+            ensemble.weights = weights.tolist()
+            predictions = ensemble.predict(validation_data)
+            accuracy = self._calculate_accuracy(predictions, validation_labels)
+            return -accuracy  # 최소화를 위해 음수 반환
+        
+        # 제약 조건: 가중치 합이 1
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+        bounds = [(0, 1) for _ in range(ensemble.num_models)]
+        
+        initial_weights = np.array(ensemble.weights)
+        result = minimize(objective, initial_weights, bounds=bounds, constraints=constraints)
+        
+        if result.success:
+            ensemble.weights = result.x.tolist()
+            print(f"Optimized weights for {name}: {ensemble.weights}")
+        else:
+            print(f"Weight optimization failed for {name}")
+
+
+# 사용 예시
+if __name__ == "__main__":
+    # 가상의 모델들
+    models = [lambda x: np.random.rand(10, 3) for _ in range(3)]
+    
+    # 앙상블 관리자 생성
+    ensemble_manager = EnsembleManager()
+    
+    # 투표 앙상블 생성
+    voting_ensemble = ensemble_manager.create_ensemble(
+        name="voting_ensemble",
+        strategy=EnsembleStrategy.VOTING,
+        models=models,
+        voting_type="soft",
+        weights=[0.4, 0.3, 0.3]
+    )
+    
+    # 평균 앙상블 생성
+    averaging_ensemble = ensemble_manager.create_ensemble(
+        name="averaging_ensemble",
+        strategy=EnsembleStrategy.AVERAGING,
+        models=models,
+        averaging_type="arithmetic"
+    )
+    
+    print("Ensembles created successfully!")
+```
+
+## ☁️ 클라우드 스토리지 연동
+
+### 클라우드 백업 시스템
+모델과 데이터를 클라우드에 자동으로 백업하고 동기화하는 시스템입니다.
+
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+클라우드 스토리지 연동 시스템
+
+AWS S3, Azure Blob Storage, Google Cloud Storage와의 연동을 지원합니다.
+"""
+
+import os
+import boto3
+import hashlib
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+
+@dataclass
+class CloudFile:
+    """클라우드 파일 정보"""
+    local_path: str
+    cloud_path: str
+    size: int
+    last_modified: datetime
+    etag: str
+    metadata: Dict[str, str]
+
+
+class CloudStorageInterface(ABC):
+    """클라우드 스토리지 인터페이스"""
+    
+    @abstractmethod
+    def upload_file(self, local_path: str, cloud_path: str, metadata: Optional[Dict] = None) -> bool:
+        """파일 업로드"""
+        pass
+    
+    @abstractmethod
+    def download_file(self, cloud_path: str, local_path: str) -> bool:
+        """파일 다운로드"""
+        pass
+    
+    @abstractmethod
+    def delete_file(self, cloud_path: str) -> bool:
+        """파일 삭제"""
+        pass
+    
+    @abstractmethod
+    def list_files(self, prefix: str = "") -> List[CloudFile]:
+        """파일 목록 조회"""
+        pass
+    
+    @abstractmethod
+    def file_exists(self, cloud_path: str) -> bool:
+        """파일 존재 여부 확인"""
+        pass
+
+
+class S3Storage(CloudStorageInterface):
+    """AWS S3 스토리지"""
+    
+    def __init__(self, bucket_name: str, aws_access_key: str = None, aws_secret_key: str = None, region: str = "us-east-1"):
+        self.bucket_name = bucket_name
+        self.region = region
+        
+        # AWS 클라이언트 초기화
+        session = boto3.Session(
+            aws_access_key_id=aws_access_key,
+            aws_secret_access_key=aws_secret_key,
+            region_name=region
+        )
+        self.s3_client = session.client('s3')
+        self.s3_resource = session.resource('s3')
+        
+        # 버킷 존재 확인 및 생성
+        self._ensure_bucket_exists()
+    
+    def _ensure_bucket_exists(self):
+        """버킷 존재 확인 및 생성"""
+        try:
+            self.s3_client.head_bucket(Bucket=self.bucket_name)
+        except:
+            try:
+                if self.region == 'us-east-1':
+                    self.s3_client.create_bucket(Bucket=self.bucket_name)
+                else:
+                    self.s3_client.create_bucket(
+                        Bucket=self.bucket_name,
+                        CreateBucketConfiguration={'LocationConstraint': self.region}
+                    )
+                print(f"Created S3 bucket: {self.bucket_name}")
+            except Exception as e:
+                print(f"Error creating bucket: {e}")
+    
+    def upload_file(self, local_path: str, cloud_path: str, metadata: Optional[Dict] = None) -> bool:
+        """파일 업로드"""
+        try:
+            extra_args = {}
+            if metadata:
+                extra_args['Metadata'] = metadata
+            
+            self.s3_client.upload_file(local_path, self.bucket_name, cloud_path, ExtraArgs=extra_args)
+            print(f"Uploaded {local_path} to s3://{self.bucket_name}/{cloud_path}")
+            return True
+        except Exception as e:
+            print(f"Error uploading file: {e}")
+            return False
+    
+    def download_file(self, cloud_path: str, local_path: str) -> bool:
+        """파일 다운로드"""
+        try:
+            # 로컬 디렉토리 생성
+            Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+            
+            self.s3_client.download_file(self.bucket_name, cloud_path, local_path)
+            print(f"Downloaded s3://{self.bucket_name}/{cloud_path} to {local_path}")
+            return True
+        except Exception as e:
+            print(f"Error downloading file: {e}")
+            return False
+    
+    def delete_file(self, cloud_path: str) -> bool:
+        """파일 삭제"""
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=cloud_path)
+            print(f"Deleted s3://{self.bucket_name}/{cloud_path}")
+            return True
+        except Exception as e:
+            print(f"Error deleting file: {e}")
+            return False
+    
+    def list_files(self, prefix: str = "") -> List[CloudFile]:
+        """파일 목록 조회"""
+        try:
+            response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix)
+            files = []
+            
+            for obj in response.get('Contents', []):
+                # 메타데이터 조회
+                head_response = self.s3_client.head_object(Bucket=self.bucket_name, Key=obj['Key'])
+                
+                cloud_file = CloudFile(
+                    local_path="",  # 로컬 경로는 알 수 없음
+                    cloud_path=obj['Key'],
+                    size=obj['Size'],
+                    last_modified=obj['LastModified'],
+                    etag=obj['ETag'].strip('"'),
+                    metadata=head_response.get('Metadata', {})
+                )
+                files.append(cloud_file)
+            
+            return files
+        except Exception as e:
+            print(f"Error listing files: {e}")
+            return []
+    
+    def file_exists(self, cloud_path: str) -> bool:
+        """파일 존재 여부 확인"""
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=cloud_path)
+            return True
+        except:
+            return False
+
+
+class AzureBlobStorage(CloudStorageInterface):
+    """Azure Blob Storage"""
+    
+    def __init__(self, account_name: str, account_key: str, container_name: str):
+        try:
+            from azure.storage.blob import BlobServiceClient
+        except ImportError:
+            raise ImportError("azure-storage-blob package is required for Azure Blob Storage")
+        
+        self.account_name = account_name
+        self.container_name = container_name
+        
+        # Azure 클라이언트 초기화
+        account_url = f"https://{account_name}.blob.core.windows.net"
+        self.blob_service_client = BlobServiceClient(account_url=account_url, credential=account_key)
+        
+        # 컨테이너 존재 확인 및 생성
+        self._ensure_container_exists()
+    
+    def _ensure_container_exists(self):
+        """컨테이너 존재 확인 및 생성"""
+        try:
+            container_client = self.blob_service_client.get_container_client(self.container_name)
+            container_client.get_container_properties()
+        except:
+            try:
+                self.blob_service_client.create_container(self.container_name)
+                print(f"Created Azure container: {self.container_name}")
+            except Exception as e:
+                print(f"Error creating container: {e}")
+    
+    def upload_file(self, local_path: str, cloud_path: str, metadata: Optional[Dict] = None) -> bool:
+        """파일 업로드"""
+        try:
+            blob_client = self.blob_service_client.get_blob_client(
+                container=self.container_name, 
+                blob=cloud_path
+            )
+            
+            with open(local_path, "rb") as data:
+                blob_client.upload_blob(data, overwrite=True, metadata=metadata)
+            
+            print(f"Uploaded {local_path} to Azure Blob: {cloud_path}")
+            return True
+        except Exception as e:
+            print(f"Error uploading file: {e}")
+            return False
+    
+    def download_file(self, cloud_path: str, local_path: str) -> bool:
+        """파일 다운로드"""
+        try:
+            # 로컬 디렉토리 생성
+            Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+            
+            blob_client = self.blob_service_client.get_blob_client(
+                container=self.container_name, 
+                blob=cloud_path
+            )
+            
+            with open(local_path, "wb") as download_file:
+                download_file.write(blob_client.download_blob().readall())
+            
+            print(f"Downloaded Azure Blob {cloud_path} to {local_path}")
+            return True
+        except Exception as e:
+            print(f"Error downloading file: {e}")
+            return False
+    
+    def delete_file(self, cloud_path: str) -> bool:
+        """파일 삭제"""
+        try:
+            blob_client = self.blob_service_client.get_blob_client(
+                container=self.container_name, 
+                blob=cloud_path
+            )
+            blob_client.delete_blob()
+            
+            print(f"Deleted Azure Blob: {cloud_path}")
+            return True
+        except Exception as e:
+            print(f"Error deleting file: {e}")
+            return False
+    
+    def list_files(self, prefix: str = "") -> List[CloudFile]:
+        """파일 목록 조회"""
+        try:
+            container_client = self.blob_service_client.get_container_client(self.container_name)
+            blobs = container_client.list_blobs(name_starts_with=prefix)
+            
+            files = []
+            for blob in blobs:
+                cloud_file = CloudFile(
+                    local_path="",
+                    cloud_path=blob.name,
+                    size=blob.size,
+                    last_modified=blob.last_modified,
+                    etag=blob.etag.strip('"'),
+                    metadata=blob.metadata or {}
+                )
+                files.append(cloud_file)
+            
+            return files
+        except Exception as e:
+            print(f"Error listing files: {e}")
+            return []
+    
+    def file_exists(self, cloud_path: str) -> bool:
+        """파일 존재 여부 확인"""
+        try:
+            blob_client = self.blob_service_client.get_blob_client(
+                container=self.container_name, 
+                blob=cloud_path
+            )
+            blob_client.get_blob_properties()
+            return True
+        except:
+            return False
+
+
+class BackupManager:
+    """백업 관리자"""
+    
+    def __init__(self, storage: CloudStorageInterface, local_base_path: str = "."):
+        self.storage = storage
+        self.local_base_path = Path(local_base_path)
+        self.sync_log_file = self.local_base_path / "sync_log.json"
+        
+        # 동기화 로그 로드
+        self.sync_log = self._load_sync_log()
+    
+    def _load_sync_log(self) -> Dict:
+        """동기화 로그 로드"""
+        if self.sync_log_file.exists():
+            try:
+                import json
+                with open(self.sync_log_file, 'r') as f:
+                    return json.load(f)
+            except:
+                pass
+        return {}
+    
+    def _save_sync_log(self):
+        """동기화 로그 저장"""
+        import json
+        with open(self.sync_log_file, 'w') as f:
+            json.dump(self.sync_log, f, indent=2, default=str)
+    
+    def _calculate_file_hash(self, file_path: str) -> str:
+        """파일 해시 계산"""
+        hash_sha256 = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_sha256.update(chunk)
+        return hash_sha256.hexdigest()
+    
+    def backup_file(self, local_path: str, cloud_path: Optional[str] = None, force: bool = False) -> bool:
+        """단일 파일 백업"""
+        local_path = Path(local_path)
+        if not local_path.exists():
+            print(f"Local file not found: {local_path}")
+            return False
+        
+        if cloud_path is None:
+            cloud_path = str(local_path.relative_to(self.local_base_path))
+        
+        # 파일 해시 계산
+        current_hash = self._calculate_file_hash(str(local_path))
+        
+        # 이전 동기화 정보 확인
+        sync_key = str(local_path)
+        last_sync = self.sync_log.get(sync_key, {})
+        
+        if not force and last_sync.get('hash') == current_hash:
+            print(f"File unchanged, skipping: {local_path}")
+            return True
+        
+        # 메타데이터 생성
+        metadata = {
+            'local_path': str(local_path),
+            'upload_time': datetime.now().isoformat(),
+            'file_hash': current_hash,
+            'file_size': str(local_path.stat().st_size)
+        }
+        
+        # 업로드 실행
+        success = self.storage.upload_file(str(local_path), cloud_path, metadata)
+        
+        if success:
+            # 동기화 로그 업데이트
+            self.sync_log[sync_key] = {
+                'cloud_path': cloud_path,
+                'hash': current_hash,
+                'last_sync': datetime.now().isoformat()
+            }
+            self._save_sync_log()
+        
+        return success
+    
+    def backup_directory(self, local_dir: str, cloud_prefix: str = "", exclude_patterns: List[str] = None) -> Dict[str, bool]:
+        """디렉토리 백업"""
+        local_dir = Path(local_dir)
+        exclude_patterns = exclude_patterns or ['*.tmp', '*.log', '__pycache__']
+        
+        results = {}
+        
+        for file_path in local_dir.rglob("*"):
+            if file_path.is_file():
+                # 제외 패턴 확인
+                skip = False
+                for pattern in exclude_patterns:
+                    if file_path.match(pattern):
+                        skip = True
+                        break
+                
+                if skip:
+                    continue
+                
+                # 클라우드 경로 생성
+                relative_path = file_path.relative_to(local_dir)
+                cloud_path = f"{cloud_prefix}/{relative_path}" if cloud_prefix else str(relative_path)
+                cloud_path = cloud_path.replace("\\", "/")  # Windows 경로 처리
+                
+                # 백업 실행
+                success = self.backup_file(str(file_path), cloud_path)
+                results[str(file_path)] = success
+        
+        return results
+    
+    def restore_file(self, cloud_path: str, local_path: Optional[str] = None) -> bool:
+        """단일 파일 복원"""
+        if local_path is None:
+            local_path = self.local_base_path / cloud_path
+        
+        return self.storage.download_file(cloud_path, str(local_path))
+    
+    def sync_directory(self, local_dir: str, cloud_prefix: str = "", bidirectional: bool = False) -> Dict[str, Any]:
+        """디렉토리 동기화"""
+        results = {
+            'uploaded': [],
+            'downloaded': [],
+            'conflicts': [],
+            'errors': []
+        }
+        
+        local_dir = Path(local_dir)
+        
+        # 로컬 파일 목록
+        local_files = {}
+        for file_path in local_dir.rglob("*"):
+            if file_path.is_file():
+                relative_path = file_path.relative_to(local_dir)
+                cloud_path = f"{cloud_prefix}/{relative_path}" if cloud_prefix else str(relative_path)
+                cloud_path = cloud_path.replace("\\", "/")
+                local_files[cloud_path] = file_path
+        
+        # 클라우드 파일 목록
+        cloud_files = {cf.cloud_path: cf for cf in self.storage.list_files(cloud_prefix)}
+        
+        # 업로드할 파일 (로컬에만 있거나 더 새로운 파일)
+        for cloud_path, local_path in local_files.items():
+            if cloud_path not in cloud_files:
+                # 새 파일 업로드
+                if self.backup_file(str(local_path), cloud_path):
+                    results['uploaded'].append(cloud_path)
+                else:
+                    results['errors'].append(f"Failed to upload {cloud_path}")
+            else:
+                # 파일 비교 및 업데이트
+                cloud_file = cloud_files[cloud_path]
+                local_mtime = datetime.fromtimestamp(local_path.stat().st_mtime)
+                
+                if local_mtime > cloud_file.last_modified:
+                    if self.backup_file(str(local_path), cloud_path):
+                        results['uploaded'].append(cloud_path)
+                    else:
+                        results['errors'].append(f"Failed to upload {cloud_path}")
+        
+        # 양방향 동기화인 경우 다운로드
+        if bidirectional:
+            for cloud_path, cloud_file in cloud_files.items():
+                if cloud_path not in local_files:
+                    # 새 파일 다운로드
+                    local_path = local_dir / cloud_path
+                    if self.restore_file(cloud_path, str(local_path)):
+                        results['downloaded'].append(cloud_path)
+                    else:
+                        results['errors'].append(f"Failed to download {cloud_path}")
+        
+        return results
+    
+    def cleanup_old_backups(self, days_to_keep: int = 30) -> List[str]:
+        """오래된 백업 정리"""
+        cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+        deleted_files = []
+        
+        cloud_files = self.storage.list_files()
+        
+        for cloud_file in cloud_files:
+            if cloud_file.last_modified < cutoff_date:
+                if self.storage.delete_file(cloud_file.cloud_path):
+                    deleted_files.append(cloud_file.cloud_path)
+        
+        return deleted_files
+
+
+# 사용 예시
+if __name__ == "__main__":
+    # S3 스토리지 설정
+    s3_storage = S3Storage(
+        bucket_name="my-vision-system-backup",
+        aws_access_key="your-access-key",
+        aws_secret_key="your-secret-key",
+        region="us-west-2"
+    )
+    
+    # 백업 관리자 생성
+    backup_manager = BackupManager(s3_storage, local_base_path=".")
+    
+    # 모델 디렉토리 백업
+    results = backup_manager.backup_directory(
+        local_dir="models",
+        cloud_prefix="vision-system/models",
+        exclude_patterns=['*.tmp', '*.log']
+    )
+    
+    print(f"Backup completed. Results: {results}")
+    
+    # 디렉토리 동기화
+    sync_results = backup_manager.sync_directory(
+        local_dir="models",
+        cloud_prefix="vision-system/models",
+        bidirectional=True
+    )
+    
+    print(f"Sync completed. Results: {sync_results}")
+```
+
+

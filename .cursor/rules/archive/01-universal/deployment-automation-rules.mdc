@@ -1,0 +1,1081 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 배포 자동화 규칙 (Deployment Automation Rules)
+
+# 배포 및 운영 자동화 규칙 (Deployment & Operations Automation Rules)
+
+이 규칙은 CI/CD 파이프라인, 컨테이너화, 무중단 배포, 인프라 자동화에 관한 범용 표준입니다.
+
+## 🚀 CI/CD 파이프라인
+
+### GitHub Actions 워크플로우
+```yaml
+# .github/workflows/vision-system-ci-cd.yml
+name: Vision System CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, 3.10]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Type check with mypy
+      run: mypy src/
+    
+    - name: Security scan with bandit
+      run: bandit -r src/ -f json -o bandit-report.json
+    
+    - name: Run tests
+      run: |
+        pytest tests/ --cov=src --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment"
+        # 실제 배포 스크립트 실행
+        ./scripts/deploy.sh staging ${{ github.sha }}
+
+  deploy-production:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to production
+      run: |
+        echo "Deploying to production environment"
+        # 실제 배포 스크립트 실행
+        ./scripts/deploy.sh production ${{ github.sha }}
+```
+
+### Docker 컨테이너화
+```dockerfile
+# Dockerfile
+FROM python:3.9-slim as base
+
+# 시스템 패키지 설치
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 의존성 파일 복사 및 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 애플리케이션 코드 복사
+COPY src/ ./src/
+COPY config/ ./config/
+
+# 헬스체크 스크립트
+COPY scripts/healthcheck.py ./
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python healthcheck.py
+
+# 비root 사용자 생성
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# 포트 노출
+EXPOSE 8000
+
+# 애플리케이션 실행
+CMD ["python", "-m", "src.main"]
+
+# 멀티스테이지 빌드 - 개발용
+FROM base as development
+USER root
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+USER appuser
+CMD ["python", "-m", "src.main", "--debug"]
+
+# 멀티스테이지 빌드 - 프로덕션용
+FROM base as production
+# 프로덕션 최적화 설정
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "src.main:app"]
+```
+
+### Docker Compose 설정
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  vision-api:
+    build:
+      context: .
+      target: production
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://user:pass@db:5432/vision_db
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./models:/app/models:ro
+      - ./logs:/app/logs
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  vision-worker:
+    build:
+      context: .
+      target: production
+    command: ["python", "-m", "src.worker"]
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://user:pass@db:5432/vision_db
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=vision_db
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana:/etc/grafana/provisioning
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+```
+
+## 🔄 무중단 배포 (Blue-Green Deployment)
+
+### 배포 스크립트
+```bash
+#!/bin/bash
+# scripts/deploy.sh
+
+set -euo pipefail
+
+ENVIRONMENT=${1:-staging}
+VERSION=${2:-latest}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# 색상 코드
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+log() {
+    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+}
+
+warn() {
+    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING: $1${NC}"
+}
+
+error() {
+    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $1${NC}"
+    exit 1
+}
+
+# 환경별 설정
+case $ENVIRONMENT in
+    staging)
+        NAMESPACE="vision-staging"
+        REPLICAS=1
+        RESOURCES_LIMIT_CPU="1000m"
+        RESOURCES_LIMIT_MEMORY="2Gi"
+        ;;
+    production)
+        NAMESPACE="vision-production"
+        REPLICAS=3
+        RESOURCES_LIMIT_CPU="2000m"
+        RESOURCES_LIMIT_MEMORY="4Gi"
+        ;;
+    *)
+        error "Unknown environment: $ENVIRONMENT"
+        ;;
+esac
+
+log "Starting deployment to $ENVIRONMENT environment"
+log "Version: $VERSION"
+log "Namespace: $NAMESPACE"
+
+# Pre-deployment checks
+pre_deployment_checks() {
+    log "Running pre-deployment checks..."
+    
+    # 헬스체크 엔드포인트 확인
+    if ! curl -f -s "http://localhost:8000/health" > /dev/null; then
+        warn "Health check endpoint not responding"
+    fi
+    
+    # 데이터베이스 연결 확인
+    if ! python "$PROJECT_ROOT/scripts/check_db.py"; then
+        error "Database connection check failed"
+    fi
+    
+    # 모델 파일 존재 확인
+    if [ ! -f "$PROJECT_ROOT/models/latest.pt" ]; then
+        error "Model file not found"
+    fi
+    
+    log "Pre-deployment checks passed"
+}
+
+# Blue-Green 배포 실행
+blue_green_deploy() {
+    log "Starting Blue-Green deployment..."
+    
+    # 현재 활성 환경 확인
+    CURRENT_ENV=$(kubectl get service vision-service -n $NAMESPACE -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo "blue")
+    
+    if [ "$CURRENT_ENV" = "blue" ]; then
+        NEW_ENV="green"
+    else
+        NEW_ENV="blue"
+    fi
+    
+    log "Current environment: $CURRENT_ENV"
+    log "Deploying to: $NEW_ENV"
+    
+    # 새 환경 배포
+    deploy_to_environment $NEW_ENV
+    
+    # 헬스체크 대기
+    wait_for_health_check $NEW_ENV
+    
+    # 트래픽 전환
+    switch_traffic $NEW_ENV
+    
+    # 이전 환경 정리 (선택적)
+    if [ "$ENVIRONMENT" = "production" ]; then
+        log "Keeping old environment for rollback capability"
+    else
+        cleanup_old_environment $CURRENT_ENV
+    fi
+    
+    log "Blue-Green deployment completed successfully"
+}
+
+deploy_to_environment() {
+    local env=$1
+    log "Deploying to $env environment..."
+    
+    # Kubernetes 매니페스트 적용
+    envsubst < "$PROJECT_ROOT/k8s/deployment-template.yaml" | \
+        sed "s/{{VERSION}}/$VERSION/g" | \
+        sed "s/{{ENVIRONMENT}}/$env/g" | \
+        sed "s/{{REPLICAS}}/$REPLICAS/g" | \
+        sed "s/{{RESOURCES_LIMIT_CPU}}/$RESOURCES_LIMIT_CPU/g" | \
+        sed "s/{{RESOURCES_LIMIT_MEMORY}}/$RESOURCES_LIMIT_MEMORY/g" | \
+        kubectl apply -n $NAMESPACE -f -
+}
+
+wait_for_health_check() {
+    local env=$1
+    log "Waiting for $env environment to be healthy..."
+    
+    local max_attempts=30
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        if kubectl get pods -n $NAMESPACE -l version=$env -o jsonpath='{.items[*].status.phase}' | grep -q "Running"; then
+            # 파드가 실행 중이면 헬스체크 수행
+            local pod_name=$(kubectl get pods -n $NAMESPACE -l version=$env -o jsonpath='{.items[0].metadata.name}')
+            
+            if kubectl exec -n $NAMESPACE $pod_name -- curl -f -s http://localhost:8000/health > /dev/null; then
+                log "$env environment is healthy"
+                return 0
+            fi
+        fi
+        
+        log "Attempt $attempt/$max_attempts - waiting for $env environment..."
+        sleep 10
+        ((attempt++))
+    done
+    
+    error "$env environment failed to become healthy"
+}
+
+switch_traffic() {
+    local new_env=$1
+    log "Switching traffic to $new_env environment..."
+    
+    # 서비스 셀렉터 업데이트
+    kubectl patch service vision-service -n $NAMESPACE -p '{"spec":{"selector":{"version":"'$new_env'"}}}'
+    
+    # 트래픽 전환 확인
+    sleep 5
+    if ! curl -f -s "http://vision-service.$NAMESPACE.svc.cluster.local/health" > /dev/null; then
+        error "Traffic switch verification failed"
+    fi
+    
+    log "Traffic successfully switched to $new_env"
+}
+
+cleanup_old_environment() {
+    local old_env=$1
+    log "Cleaning up $old_env environment..."
+    
+    kubectl delete deployment vision-app-$old_env -n $NAMESPACE --ignore-not-found=true
+    
+    log "Cleanup completed"
+}
+
+# 롤백 함수
+rollback() {
+    local target_env=${1:-blue}
+    log "Rolling back to $target_env environment..."
+    
+    switch_traffic $target_env
+    
+    log "Rollback completed"
+}
+
+# 메인 실행
+main() {
+    case ${3:-deploy} in
+        deploy)
+            pre_deployment_checks
+            blue_green_deploy
+            ;;
+        rollback)
+            rollback ${4:-blue}
+            ;;
+        *)
+            echo "Usage: $0 <environment> <version> [deploy|rollback] [target_env]"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
+```
+
+## ☸️ Kubernetes 설정
+
+### Deployment 템플릿
+```yaml
+# k8s/deployment-template.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vision-app-{{ENVIRONMENT}}
+  namespace: {{NAMESPACE}}
+  labels:
+    app: vision-app
+    version: {{ENVIRONMENT}}
+spec:
+  replicas: {{REPLICAS}}
+  selector:
+    matchLabels:
+      app: vision-app
+      version: {{ENVIRONMENT}}
+  template:
+    metadata:
+      labels:
+        app: vision-app
+        version: {{ENVIRONMENT}}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: vision-api
+        image: ghcr.io/company/vision-system:{{VERSION}}
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ENVIRONMENT
+          value: "{{ENVIRONMENT}}"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: vision-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: vision-secrets
+              key: redis-url
+        resources:
+          limits:
+            cpu: {{RESOURCES_LIMIT_CPU}}
+            memory: {{RESOURCES_LIMIT_MEMORY}}
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+          readOnly: true
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-pvc
+      - name: config-volume
+        configMap:
+          name: vision-config
+      imagePullSecrets:
+      - name: ghcr-secret
+```
+
+### 서비스 및 인그레스
+```yaml
+# k8s/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: vision-service
+  namespace: {{NAMESPACE}}
+spec:
+  selector:
+    app: vision-app
+    version: blue  # 초기값
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vision-ingress
+  namespace: {{NAMESPACE}}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+spec:
+  tls:
+  - hosts:
+    - vision-api.company.com
+    secretName: vision-tls
+  rules:
+  - host: vision-api.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: vision-service
+            port:
+              number: 80
+```
+
+## 🔧 인프라 자동화 (Terraform)
+
+### AWS 인프라 설정
+```hcl
+# terraform/main.tf
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+  
+  backend "s3" {
+    bucket = "vision-system-terraform-state"
+    key    = "prod/terraform.tfstate"
+    region = "us-west-2"
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+# VPC 설정
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+  
+  name = "vision-system-vpc"
+  cidr = "10.0.0.0/16"
+  
+  azs             = ["${var.aws_region}a", "${var.aws_region}b", "${var.aws_region}c"]
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+  
+  enable_nat_gateway = true
+  enable_vpn_gateway = true
+  
+  tags = {
+    Terraform = "true"
+    Environment = var.environment
+  }
+}
+
+# EKS 클러스터
+module "eks" {
+  source = "terraform-aws-modules/eks/aws"
+  
+  cluster_name    = "vision-system-cluster"
+  cluster_version = "1.27"
+  
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+  
+  node_groups = {
+    general = {
+      desired_capacity = 2
+      max_capacity     = 10
+      min_capacity     = 1
+      
+      instance_types = ["m5.large"]
+      
+      k8s_labels = {
+        Environment = var.environment
+        NodeGroup   = "general"
+      }
+    }
+    
+    gpu = {
+      desired_capacity = 1
+      max_capacity     = 5
+      min_capacity     = 0
+      
+      instance_types = ["p3.2xlarge"]
+      
+      k8s_labels = {
+        Environment = var.environment
+        NodeGroup   = "gpu"
+      }
+      
+      taints = [
+        {
+          key    = "nvidia.com/gpu"
+          value  = "true"
+          effect = "NO_SCHEDULE"
+        }
+      ]
+    }
+  }
+}
+
+# RDS 데이터베이스
+resource "aws_db_instance" "vision_db" {
+  identifier = "vision-system-db"
+  
+  engine         = "postgres"
+  engine_version = "15.3"
+  instance_class = "db.t3.medium"
+  
+  allocated_storage     = 100
+  max_allocated_storage = 1000
+  storage_type          = "gp2"
+  storage_encrypted     = true
+  
+  db_name  = "vision_db"
+  username = var.db_username
+  password = var.db_password
+  
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.vision.name
+  
+  backup_retention_period = 7
+  backup_window          = "03:00-04:00"
+  maintenance_window     = "sun:04:00-sun:05:00"
+  
+  skip_final_snapshot = false
+  final_snapshot_identifier = "vision-db-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
+  
+  tags = {
+    Name        = "vision-system-db"
+    Environment = var.environment
+  }
+}
+
+# ElastiCache Redis
+resource "aws_elasticache_subnet_group" "vision" {
+  name       = "vision-cache-subnet"
+  subnet_ids = module.vpc.private_subnets
+}
+
+resource "aws_elasticache_replication_group" "vision" {
+  replication_group_id       = "vision-redis"
+  description                = "Redis cluster for vision system"
+  
+  node_type            = "cache.t3.micro"
+  port                 = 6379
+  parameter_group_name = "default.redis7"
+  
+  num_cache_clusters = 2
+  
+  subnet_group_name  = aws_elasticache_subnet_group.vision.name
+  security_group_ids = [aws_security_group.redis.id]
+  
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+  
+  tags = {
+    Name        = "vision-redis"
+    Environment = var.environment
+  }
+}
+
+# S3 버킷 (모델 저장용)
+resource "aws_s3_bucket" "models" {
+  bucket = "vision-system-models-${var.environment}"
+  
+  tags = {
+    Name        = "vision-models"
+    Environment = var.environment
+  }
+}
+
+resource "aws_s3_bucket_versioning" "models" {
+  bucket = aws_s3_bucket.models.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "models" {
+  bucket = aws_s3_bucket.models.id
+  
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+```
+
+### 변수 및 출력
+```hcl
+# terraform/variables.tf
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
+  default     = "us-west-2"
+}
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "production"
+}
+
+variable "db_username" {
+  description = "Database username"
+  type        = string
+  sensitive   = true
+}
+
+variable "db_password" {
+  description = "Database password"
+  type        = string
+  sensitive   = true
+}
+
+# terraform/outputs.tf
+output "cluster_endpoint" {
+  description = "EKS cluster endpoint"
+  value       = module.eks.cluster_endpoint
+}
+
+output "cluster_name" {
+  description = "EKS cluster name"
+  value       = module.eks.cluster_id
+}
+
+output "database_endpoint" {
+  description = "RDS database endpoint"
+  value       = aws_db_instance.vision_db.endpoint
+  sensitive   = true
+}
+
+output "redis_endpoint" {
+  description = "Redis cluster endpoint"
+  value       = aws_elasticache_replication_group.vision.primary_endpoint_address
+  sensitive   = true
+}
+```
+
+## 📊 배포 모니터링
+
+### 배포 메트릭 수집
+```python
+# scripts/deployment_metrics.py
+import time
+import requests
+import json
+from typing import Dict, List
+import logging
+
+class DeploymentMonitor:
+    """배포 모니터링 클래스"""
+    
+    def __init__(self, environment: str, version: str):
+        self.environment = environment
+        self.version = version
+        self.metrics = []
+        
+        # 모니터링 설정
+        self.health_check_url = f"http://vision-service.{environment}.svc.cluster.local/health"
+        self.metrics_url = f"http://vision-service.{environment}.svc.cluster.local/metrics"
+        
+    def monitor_deployment(self, duration_minutes: int = 10):
+        """배포 후 모니터링 실행"""
+        logging.info(f"Starting deployment monitoring for {duration_minutes} minutes")
+        
+        start_time = time.time()
+        end_time = start_time + (duration_minutes * 60)
+        
+        while time.time() < end_time:
+            try:
+                # 헬스체크
+                health_status = self._check_health()
+                
+                # 메트릭 수집
+                current_metrics = self._collect_metrics()
+                
+                # 결과 저장
+                metric_entry = {
+                    'timestamp': time.time(),
+                    'health_status': health_status,
+                    'metrics': current_metrics
+                }
+                self.metrics.append(metric_entry)
+                
+                # 이상 상황 감지
+                if not health_status['healthy']:
+                    logging.error(f"Health check failed: {health_status}")
+                    return False
+                
+                # 성능 저하 감지
+                if self._detect_performance_degradation(current_metrics):
+                    logging.warning("Performance degradation detected")
+                
+                time.sleep(30)  # 30초마다 확인
+                
+            except Exception as e:
+                logging.error(f"Monitoring error: {str(e)}")
+                time.sleep(30)
+        
+        # 최종 리포트 생성
+        self._generate_deployment_report()
+        return True
+    
+    def _check_health(self) -> Dict:
+        """헬스체크 수행"""
+        try:
+            response = requests.get(self.health_check_url, timeout=10)
+            return {
+                'healthy': response.status_code == 200,
+                'status_code': response.status_code,
+                'response_time': response.elapsed.total_seconds()
+            }
+        except Exception as e:
+            return {
+                'healthy': False,
+                'error': str(e),
+                'response_time': None
+            }
+    
+    def _collect_metrics(self) -> Dict:
+        """메트릭 수집"""
+        try:
+            response = requests.get(self.metrics_url, timeout=10)
+            if response.status_code == 200:
+                # Prometheus 메트릭 파싱
+                metrics = self._parse_prometheus_metrics(response.text)
+                return metrics
+            return {}
+        except Exception as e:
+            logging.error(f"Failed to collect metrics: {str(e)}")
+            return {}
+    
+    def _parse_prometheus_metrics(self, metrics_text: str) -> Dict:
+        """Prometheus 메트릭 파싱"""
+        metrics = {}
+        
+        for line in metrics_text.split('\n'):
+            if line.startswith('vision_'):
+                try:
+                    # 간단한 메트릭 파싱
+                    parts = line.split(' ')
+                    if len(parts) >= 2:
+                        metric_name = parts[0].split('{')[0]
+                        metric_value = float(parts[-1])
+                        metrics[metric_name] = metric_value
+                except ValueError:
+                    continue
+        
+        return metrics
+    
+    def _detect_performance_degradation(self, current_metrics: Dict) -> bool:
+        """성능 저하 감지"""
+        if len(self.metrics) < 3:
+            return False
+        
+        # 최근 3개 메트릭과 비교
+        recent_metrics = self.metrics[-3:]
+        
+        # FPS 저하 감지
+        current_fps = current_metrics.get('vision_current_fps', 0)
+        avg_recent_fps = sum(m['metrics'].get('vision_current_fps', 0) for m in recent_metrics) / len(recent_metrics)
+        
+        if current_fps < avg_recent_fps * 0.8:  # 20% 이상 저하
+            return True
+        
+        # 에러율 증가 감지
+        current_errors = current_metrics.get('vision_errors_total', 0)
+        avg_recent_errors = sum(m['metrics'].get('vision_errors_total', 0) for m in recent_metrics) / len(recent_metrics)
+        
+        if current_errors > avg_recent_errors * 1.5:  # 50% 이상 증가
+            return True
+        
+        return False
+    
+    def _generate_deployment_report(self):
+        """배포 리포트 생성"""
+        if not self.metrics:
+            return
+        
+        # 통계 계산
+        total_checks = len(self.metrics)
+        healthy_checks = sum(1 for m in self.metrics if m['health_status']['healthy'])
+        health_ratio = healthy_checks / total_checks
+        
+        # 평균 응답 시간
+        response_times = [m['health_status']['response_time'] for m in self.metrics 
+                         if m['health_status']['response_time'] is not None]
+        avg_response_time = sum(response_times) / len(response_times) if response_times else 0
+        
+        report = {
+            'environment': self.environment,
+            'version': self.version,
+            'deployment_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'monitoring_duration_minutes': len(self.metrics) * 0.5,  # 30초 간격
+            'health_ratio': health_ratio,
+            'avg_response_time_seconds': avg_response_time,
+            'total_health_checks': total_checks,
+            'successful_checks': healthy_checks
+        }
+        
+        # 리포트 저장
+        with open(f'deployment_report_{self.environment}_{self.version}.json', 'w') as f:
+            json.dump(report, f, indent=2)
+        
+        logging.info(f"Deployment report generated: {report}")
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) != 3:
+        print("Usage: python deployment_metrics.py <environment> <version>")
+        sys.exit(1)
+    
+    environment = sys.argv[1]
+    version = sys.argv[2]
+    
+    monitor = DeploymentMonitor(environment, version)
+    success = monitor.monitor_deployment(duration_minutes=10)
+    
+    if not success:
+        print("Deployment monitoring failed!")
+        sys.exit(1)
+    
+    print("Deployment monitoring completed successfully")
+```
+
+이 배포 및 운영 자동화 규칙들을 통해 안정적이고 효율적인 CI/CD 파이프라인을 구축할 수 있습니다.
+

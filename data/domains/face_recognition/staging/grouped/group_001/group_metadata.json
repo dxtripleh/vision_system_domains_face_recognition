@@ -1,0 +1,23 @@
+{
+  "group_id": 1,
+  "face_count": 2,
+  "created_at": "20250703_005706_211",
+  "faces": [
+    {
+      "index": 1,
+      "original_file": "data\\domains\\face_recognition\\detected_faces\\20250703\\auto_face_cf_20250630_11081_19_324_conf0.80.jpg",
+      "saved_as": "fr_group_001_face_01.jpg",
+      "embedding_shape": [
+        512
+      ]
+    },
+    {
+      "index": 2,
+      "original_file": "data\\domains\\face_recognition\\detected_faces\\20250703\\auto_face_cf_20250630_11081_19_387_conf0.80.jpg",
+      "saved_as": "fr_group_001_face_02.jpg",
+      "embedding_shape": [
+        512
+      ]
+    }
+  ]
+}

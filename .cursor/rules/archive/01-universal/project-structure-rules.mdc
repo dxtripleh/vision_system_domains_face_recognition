@@ -1,0 +1,611 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 프로젝트 구조 규칙 (Project Structure Rules)
+
+이 규칙은 대규모 프로젝트의 폴더 구조, 계층 관리, 의존성 규칙에 관한 범용 표준입니다.
+
+## 📁 표준 프로젝트 구조
+
+### 최상위 폴더 구조 (현재 비전 시스템 구조)
+```
+vision_system/
+├── domains/                   # 도메인별 독립 개발
+│   ├── face_recognition/      # 얼굴인식 도메인
+│   │   ├── core/              # 도메인 핵심 로직 (DDD)
+│   │   ├── infrastructure/    # 인프라 계층
+│   │   └── interfaces/        # API 인터페이스
+│   ├── factory_defect/        # 공장 불량 검출 도메인 (향후)
+│   └── powerline_inspection/  # 전선 검사 도메인 (향후)
+├── shared/                    # 공통 모듈 (점진적 확장)
+│   ├── vision_core/           # 비전 알고리즘 공통 모듈
+│   └── security/              # 보안 모듈 (GDPR 준수)
+├── common/                    # 범용 유틸리티 및 기능
+├── config/                    # 전역 설정 관리
+├── models/                    # 모델 저장소
+│   ├── weights/               # 모델 가중치
+│   ├── metadata/              # 모델 메타데이터
+│   └── configs/               # 모델 설정
+├── datasets/                  # 🎯 학습 전용 데이터 (ML 데이터셋)
+├── data/                      # 🎯 런타임 전용 데이터
+│   ├── temp/                  # 임시 파일
+│   ├── logs/                  # 로그 파일
+│   └── output/                # 결과물 저장
+├── scripts/                   # 유틸리티 스크립트
+├── tests/                     # 테스트 코드
+├── requirements.txt           # 의존성 정의
+├── README.md                 # 프로젝트 개요
+└── main.py                   # 메인 진입점 (선택적)
+```
+
+## 🔗 계층별 의존성 규칙
+
+### 계층 정의 (Level 1이 가장 낮은 계층)
+```python
+PROJECT_LAYERS = {
+    'Level 1': ['common', 'config'],        # 공통 유틸리티 및 설정 (기반 계층)
+    'Level 2': ['shared'],                  # 공유 모듈 (비전 핵심, 보안 등)
+    'Level 3': ['models'],                  # 모델 및 AI 관련
+    'Level 4': ['domains'],                 # 도메인별 비즈니스 로직
+    'Level 5': ['applications']             # 최종 사용자 애플리케이션 (향후)
+}
+
+# 의존성 규칙
+DEPENDENCY_RULES = {
+    'allowed': 'higher_level → lower_level',  # 상위 → 하위만 허용
+    'forbidden': 'lower_level → higher_level', # 하위 → 상위 금지
+    'circular': 'strictly_forbidden',          # 순환 의존성 절대 금지
+    'common_access': 'all_levels → [common, config]',  # 모든 레벨이 공통 레이어 접근 가능
+    'domain_isolation': 'domains 간 직접 의존성 금지'  # 도메인 간 독립성 보장
+}
+```
+
+### 도메인 독립성 규칙
+```python
+DOMAIN_INDEPENDENCE_RULES = {
+    'direct_imports_forbidden': [
+        'domains.face_recognition → domains.factory_defect',
+        'domains.factory_defect → domains.powerline_inspection',
+        'domains.* → domains.*'  # 모든 도메인 간 직접 import 금지
+    ],
+    'allowed_dependencies': [
+        'domains.* → shared.*',     # 도메인 → 공유 모듈 허용
+        'domains.* → common.*',     # 도메인 → 공통 유틸리티 허용
+        'domains.* → config.*',     # 도메인 → 설정 허용
+        'domains.* → models.*'      # 도메인 → 모델 허용
+    ],
+    'communication_via_shared': True  # 도메인 간 통신은 shared 모듈을 통해서만
+}
+```
+
+### 의존성 검증 시스템
+```python
+class DependencyValidator:
+    """프로젝트 의존성 규칙 검증"""
+    
+    def __init__(self, project_root: str):
+        self.project_root = Path(project_root)
+        self.layers = PROJECT_LAYERS
+        
+    def validate_import(self, from_module: str, to_module: str) -> bool:
+        """import 문의 의존성 규칙 검증"""
+        from_layer = self._get_layer(from_module)
+        to_layer = self._get_layer(to_module)
+        
+        # 공통 레이어는 모든 곳에서 접근 가능
+        if to_layer in ['common', 'config']:
+            return True
+        
+        # 도메인 간 직접 import 금지
+        if from_layer == 'domains' and to_layer == 'domains':
+            from_domain = self._get_domain(from_module)
+            to_domain = self._get_domain(to_module)
+            if from_domain != to_domain:
+                return False  # 다른 도메인으로의 직접 import 금지
+            
+        # 같은 레이어 내 접근 허용 (같은 도메인 내)
+        if from_layer == to_layer:
+            return True
+            
+        # 상위 레이어에서 하위 레이어로만 접근 허용
+        from_level = self._get_level(from_layer)
+        to_level = self._get_level(to_layer)
+        
+        return from_level > to_level
+    
+    def _get_layer(self, module_path: str) -> str:
+        """모듈 경로에서 레이어 추출"""
+        parts = module_path.split('.')
+        if len(parts) > 0:
+            return parts[0]
+        return 'unknown'
+    
+    def _get_domain(self, module_path: str) -> str:
+        """도메인 경로에서 도메인명 추출"""
+        parts = module_path.split('.')
+        if len(parts) > 1 and parts[0] == 'domains':
+            return parts[1]
+        return 'unknown'
+    
+    def _get_level(self, layer: str) -> int:
+        """레이어의 레벨 번호 반환"""
+        for level, layers in self.layers.items():
+            if layer in layers:
+                return int(level.split()[1])
+        return 0
+
+    def scan_project_dependencies(self) -> Dict[str, List[str]]:
+        """프로젝트 전체 의존성 스캔"""
+        violations = {}
+        
+        for py_file in self.project_root.rglob("*.py"):
+            if py_file.name.startswith('__'):
+                continue
+                
+            violations_in_file = self._scan_file_imports(py_file)
+            if violations_in_file:
+                violations[str(py_file)] = violations_in_file
+                
+        return violations
+    
+    def _scan_file_imports(self, file_path: Path) -> List[str]:
+        """파일의 import 문 검증"""
+        violations = []
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            # AST 파싱으로 import 문 추출
+            tree = ast.parse(content)
+            
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if not self.validate_import(str(file_path), alias.name):
+                            violations.append(f"Invalid import: {alias.name}")
+                            
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        if not self.validate_import(str(file_path), node.module):
+                            violations.append(f"Invalid import from: {node.module}")
+                            
+        except Exception as e:
+            violations.append(f"Error parsing file: {str(e)}")
+            
+        return violations
+```
+
+## 📦 Common 폴더 표준 구조
+
+### Common 폴더 필수 구성 요소
+```python
+COMMON_FOLDER_STRUCTURE = {
+    'required_files': [
+        '__init__.py',
+        'README.md', 
+        'CHANGELOG.md',
+        'constants.py',
+        'enums.py'
+    ],
+    'required_folders': {
+        'config/': {
+            'purpose': '설정 관리',
+            'files': ['__init__.py', 'config_manager.py', 'loader.py', 'validator.py']
+        },
+        'file/': {
+            'purpose': '파일 입출력',
+            'files': ['__init__.py', 'image_io.py', 'video_io.py', 'json_utils.py', 'yaml_utils.py']
+        },
+        'logging/': {
+            'purpose': '로깅 시스템',
+            'files': ['__init__.py', 'logger.py', 'filters.py', 'formatters.py', 'handlers.py']
+        },
+        'utils/': {
+            'purpose': '범용 유틸리티',
+            'files': ['__init__.py', 'hardware_detector.py', 'path_utils.py', 'time_utils.py']
+        }
+    }
+}
+```
+
+## 🏗️ Shared 폴더 표준 구조
+
+### Shared 폴더 구성 (비전 시스템 특화)
+```python
+SHARED_FOLDER_STRUCTURE = {
+    'vision_core/': {
+        'purpose': '비전 알고리즘 공통 모듈',
+        'submodules': [
+            'detection/',      # 객체/얼굴 검출 공통 기능
+            'recognition/',    # 인식 공통 기능
+            'preprocessing/',  # 전처리 공통 기능
+            'postprocessing/', # 후처리 공통 기능
+            'tracking/',       # 추적 공통 기능
+            'visualization/'   # 시각화 공통 기능
+        ]
+    },
+    'security/': {
+        'purpose': '보안 및 개인정보 보호',
+        'submodules': [
+            'privacy/',        # 개인정보 보호 (GDPR)
+            'encryption/',     # 암호화
+            'authentication/', # 인증
+            'audit/'          # 감사 로깅
+        ]
+    }
+}
+```
+
+### 싱글톤 클래스 표준 (Common 폴더 전용)
+```python
+class SingletonMeta(type):
+    """스레드 안전 싱글톤 메타클래스"""
+    _instances = {}
+    _lock = threading.Lock()
+    
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            with cls._lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+# 사용 예시
+class ConfigManager(metaclass=SingletonMeta):
+    """설정 관리 싱글톤"""
+    
+    def __init__(self):
+        if hasattr(self, '_initialized'):
+            return
+        self._initialized = True
+        self._config = {}
+        self._load_config()
+    
+    def _load_config(self):
+        """설정 파일 로딩"""
+        pass
+
+class HardwareDetector(metaclass=SingletonMeta):
+    """하드웨어 감지 싱글톤"""
+    
+    def __init__(self):
+        if hasattr(self, '_initialized'):
+            return
+        self._initialized = True
+        self._hardware_info = {}
+        self._detect_hardware()
+    
+    def _detect_hardware(self):
+        """하드웨어 감지"""
+        pass
+```
+
+## 🗂️ 설정 파일 관리 시스템
+
+### JSON Schema 기반 검증
+```python
+class ConfigValidator:
+    """설정 파일 검증 시스템"""
+    
+    def __init__(self, schema_dir: str = 'config/schemas'):
+        self.schema_dir = Path(schema_dir)
+        self.schemas = self._load_schemas()
+    
+    def _load_schemas(self) -> Dict[str, Dict]:
+        """스키마 파일들 로딩"""
+        schemas = {}
+        
+        for schema_file in self.schema_dir.glob('*.yaml'):
+            with open(schema_file, 'r', encoding='utf-8') as f:
+                schemas[schema_file.stem] = yaml.safe_load(f)
+                
+        return schemas
+    
+    def validate_config(self, config_file: str, schema_name: str) -> Dict:
+        """설정 파일 검증"""
+        if schema_name not in self.schemas:
+            return {'valid': False, 'error': f'Schema {schema_name} not found'}
+        
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config_data = yaml.safe_load(f)
+            
+            # JSON Schema 검증
+            jsonschema.validate(config_data, self.schemas[schema_name])
+            
+            return {'valid': True, 'data': config_data}
+            
+        except jsonschema.ValidationError as e:
+            return {'valid': False, 'error': f'Validation error: {e.message}'}
+        except Exception as e:
+            return {'valid': False, 'error': f'File error: {str(e)}'}
+
+# 기본 스키마 템플릿
+BASE_CONFIG_SCHEMA = {
+    "type": "object",
+    "required": ["version", "meta"],
+    "properties": {
+        "version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "meta": {
+            "type": "object",
+            "required": ["description", "lastModified"],
+            "properties": {
+                "description": {"type": "string"},
+                "lastModified": {"type": "string", "format": "date-time"},
+                "status": {"enum": ["active", "deprecated", "experimental"]}
+            }
+        }
+    }
+}
+```
+
+### 환경별 설정 관리
+```python
+class EnvironmentManager:
+    """환경별 설정 관리"""
+    
+    def __init__(self, config_dir: str = 'config'):
+        self.config_dir = Path(config_dir)
+        self.current_env = os.getenv('ENVIRONMENT', 'development')
+    
+    def load_config(self, config_name: str) -> Dict:
+        """환경별 설정 로딩 및 병합"""
+        # 기본 설정 로딩
+        base_config = self._load_base_config(config_name)
+        
+        # 환경별 설정 로딩
+        env_config = self._load_env_config(config_name, self.current_env)
+        
+        # 설정 병합 (환경별이 기본을 오버라이드)
+        merged_config = self._deep_merge(base_config, env_config)
+        
+        # 환경 변수 치환
+        resolved_config = self._resolve_env_variables(merged_config)
+        
+        return resolved_config
+    
+    def _load_base_config(self, config_name: str) -> Dict:
+        """기본 설정 파일 로딩"""
+        config_file = self.config_dir / f'{config_name}.yaml'
+        if config_file.exists():
+            with open(config_file, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f) or {}
+        return {}
+    
+    def _load_env_config(self, config_name: str, environment: str) -> Dict:
+        """환경별 설정 파일 로딩"""
+        env_config_file = self.config_dir / 'environments' / f'{environment}_{config_name}.yaml'
+        if env_config_file.exists():
+            with open(env_config_file, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f) or {}
+        return {}
+    
+    def _deep_merge(self, base: Dict, override: Dict) -> Dict:
+        """딕셔너리 깊은 병합"""
+        result = base.copy()
+        
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+                
+        return result
+    
+    def _resolve_env_variables(self, config: Dict) -> Dict:
+        """환경 변수 치환 (${VAR} 형식)"""
+        def resolve_value(value):
+            if isinstance(value, str):
+                # ${VAR} 패턴 치환
+                pattern = r'\$\{([^}]+)\}'
+                
+                def replace_var(match):
+                    var_name = match.group(1)
+                    return os.getenv(var_name, match.group(0))  # 환경변수가 없으면 원본 유지
+                
+                return re.sub(pattern, replace_var, value)
+            elif isinstance(value, dict):
+                return {k: resolve_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [resolve_value(item) for item in value]
+            else:
+                return value
+        
+        return resolve_value(config)
+```
+
+## 🧹 임시 데이터 관리
+
+### 자동 정리 시스템
+```python
+class TempDataManager:
+    """임시 데이터 자동 관리"""
+    
+    def __init__(self, temp_dir: str = 'data/temp'):
+        self.temp_dir = Path(temp_dir)
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 정리 규칙
+        self.cleanup_rules = {
+            'max_age_hours': 24,      # 24시간 이상 된 파일 삭제
+            'max_size_mb': 1000,      # 1GB 이상 시 오래된 파일부터 삭제
+            'keep_recent_count': 10   # 최신 10개 파일은 항상 유지
+        }
+    
+    def create_temp_file(self, prefix: str = 'temp', suffix: str = '.tmp') -> Path:
+        """임시 파일 생성"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        filename = f'{prefix}_{timestamp}{suffix}'
+        temp_file = self.temp_dir / filename
+        
+        # 파일 생성
+        temp_file.touch()
+        
+        # 정리 작업 스케줄링 (백그라운드)
+        threading.Thread(target=self._schedule_cleanup, daemon=True).start()
+        
+        return temp_file
+    
+    def _schedule_cleanup(self):
+        """정리 작업 스케줄링"""
+        time.sleep(1)  # 1초 후 정리 실행
+        self.cleanup_temp_files()
+    
+    def cleanup_temp_files(self):
+        """임시 파일 정리"""
+        if not self.temp_dir.exists():
+            return
+        
+        temp_files = list(self.temp_dir.glob('*'))
+        
+        # 파일 크기 기준 정리
+        total_size = sum(f.stat().st_size for f in temp_files if f.is_file())
+        max_size_bytes = self.cleanup_rules['max_size_mb'] * 1024 * 1024
+        
+        if total_size > max_size_bytes:
+            # 오래된 파일부터 삭제
+            temp_files.sort(key=lambda f: f.stat().st_mtime)
+            
+            for file in temp_files[:-self.cleanup_rules['keep_recent_count']]:
+                if file.is_file():
+                    try:
+                        file.unlink()
+                    except:
+                        pass
+        
+        # 나이 기준 정리
+        max_age_seconds = self.cleanup_rules['max_age_hours'] * 3600
+        current_time = time.time()
+        
+        for file in temp_files:
+            if file.is_file():
+                file_age = current_time - file.stat().st_mtime
+                if file_age > max_age_seconds:
+                    try:
+                        file.unlink()
+                    except:
+                        pass
+
+# 전역 임시 데이터 매니저
+temp_manager = TempDataManager()
+
+# 컨텍스트 매니저로 사용
+@contextmanager
+def temp_file(prefix: str = 'temp', suffix: str = '.tmp'):
+    """임시 파일 컨텍스트 매니저"""
+    temp_path = temp_manager.create_temp_file(prefix, suffix)
+    try:
+        yield temp_path
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+```
+
+## 📊 프로젝트 구조 검증
+
+### 구조 규칙 검증 스크립트
+```python
+def validate_project_structure() -> Dict[str, List[str]]:
+    """프로젝트 구조 규칙 검증"""
+    violations = []
+    warnings = []
+    
+    # 필수 폴더 검증
+    required_folders = ['common', 'config', 'core', 'features', 'scripts', 'tests']
+    for folder in required_folders:
+        if not Path(folder).exists():
+            violations.append(f'Required folder missing: {folder}')
+    
+    # Common 폴더 구조 검증
+    common_violations = validate_common_structure()
+    violations.extend(common_violations)
+    
+    # 의존성 규칙 검증
+    dependency_violations = DependencyValidator('.').scan_project_dependencies()
+    if dependency_violations:
+        violations.extend([f'{file}: {", ".join(errs)}' for file, errs in dependency_violations.items()])
+    
+    # 파일 네이밍 검증
+    naming_violations = validate_file_naming()
+    warnings.extend(naming_violations)
+    
+    return {
+        'violations': violations,
+        'warnings': warnings,
+        'status': 'PASS' if not violations else 'FAIL'
+    }
+
+def validate_common_structure() -> List[str]:
+    """Common 폴더 구조 검증"""
+    violations = []
+    common_path = Path('common')
+    
+    if not common_path.exists():
+        return ['Common folder does not exist']
+    
+    # 필수 파일 검증
+    required_files = ['__init__.py', 'README.md', 'constants.py', 'enums.py']
+    for file in required_files:
+        if not (common_path / file).exists():
+            violations.append(f'Common folder missing required file: {file}')
+    
+    # 필수 서브폴더 검증
+    required_subfolders = ['config', 'file', 'logging', 'utils']
+    for folder in required_subfolders:
+        folder_path = common_path / folder
+        if not folder_path.exists():
+            violations.append(f'Common folder missing required subfolder: {folder}')
+        elif not (folder_path / '__init__.py').exists():
+            violations.append(f'Common subfolder missing __init__.py: {folder}')
+    
+    return violations
+
+def validate_file_naming() -> List[str]:
+    """파일 네이밍 규칙 검증"""
+    warnings = []
+    
+    # Python 파일 네이밍 검증
+    for py_file in Path('.').rglob('*.py'):
+        filename = py_file.name
+        
+        # snake_case 검증
+        if not re.match(r'^[a-z0-9_]+\.py$', filename):
+            if not filename.startswith('__'):  # __init__.py 등 예외
+                warnings.append(f'File name not in snake_case: {py_file}')
+        
+        # 특수 접두사 검증
+        if filename.startswith('run_') and not py_file.parent.name == 'scripts':
+            warnings.append(f'run_ prefix file outside scripts folder: {py_file}')
+        
+        if filename.startswith('test_') and not py_file.parent.name == 'tests':
+            warnings.append(f'test_ prefix file outside tests folder: {py_file}')
+    
+    return warnings
+
+if __name__ == '__main__':
+    result = validate_project_structure()
+    print(f"Project Structure Validation: {result['status']}")
+    
+    if result['violations']:
+        print("\n❌ Violations:")
+        for violation in result['violations']:
+            print(f"  - {violation}")
+    
+    if result['warnings']:
+        print("\n⚠️ Warnings:")
+        for warning in result['warnings']:
+            print(f"  - {warning}")
+    
+    if result['status'] == 'PASS':
+        print("\n✅ Project structure is valid!")
+```
+
+이 규칙들은 모든 프로젝트 유형에 적용할 수 있는 범용 구조 관리 표준입니다.
+
+

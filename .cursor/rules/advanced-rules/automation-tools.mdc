@@ -1,0 +1,687 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 자동화 도구 시스템 (ADVANCED)
+
+## 🔧 스크립트 자동화 규칙
+
+### 스크립트 네이밍 및 분류
+```python
+SCRIPT_CATEGORIES = {
+    'setup': {
+        'prefix': 'setup_',
+        'purpose': '개발 환경 설정 및 초기화',
+        'location': 'scripts/setup/',
+        'examples': ['setup_coding_tools.py', 'setup_git_hooks.py', 'setup_environment.py']
+    },
+    'check': {
+        'prefix': 'check_',
+        'purpose': '코드 품질 및 규칙 검증',
+        'location': 'scripts/validation/',
+        'examples': ['check_code_style.py', 'check_dependencies.py', 'check_security.py']
+    },
+    'validate': {
+        'prefix': 'validate_',
+        'purpose': '데이터 및 설정 검증',
+        'location': 'scripts/validation/',
+        'examples': ['validate_rules.py', 'validate_config.py', 'validate_data.py']
+    },
+    'generate': {
+        'prefix': 'generate_',
+        'purpose': '파일 및 코드 생성',
+        'location': 'scripts/development/',
+        'examples': ['generate_docs.py', 'generate_config.py', 'generate_templates.py']
+    },
+    'deploy': {
+        'prefix': 'deploy_',
+        'purpose': '배포 및 릴리즈',
+        'location': 'scripts/deployment/',
+        'examples': ['deploy_staging.py', 'deploy_production.py', 'deploy_docs.py']
+    },
+    'download': {
+        'prefix': 'download_',
+        'purpose': '모델 및 리소스 다운로드',
+        'location': 'scripts/development/model_management/',
+        'examples': ['download_models.py', 'download_opencv_cascades.py', 'download_datasets.py']
+    },
+    'cleanup': {
+        'prefix': 'cleanup_',
+        'purpose': '정리 및 최적화',
+        'location': 'scripts/maintenance/',
+        'examples': ['cleanup_models.py', 'cleanup_weights.py', 'cleanup_temp_files.py']
+    }
+}
+```
+
+### 모델 관리 자동화
+```python
+# scripts/development/model_management/ 구현 표준
+MODEL_MANAGEMENT_TASKS = {
+    'download_models': {
+        'description': '모델 가중치 파일 다운로드',
+        'script': 'download_models.py',
+        'config_key': 'model_urls'
+    },
+    'download_opencv_cascades': {
+        'description': 'OpenCV Haar Cascade 파일 다운로드',
+        'script': 'download_opencv_cascades.py',
+        'config_key': 'cascade_urls'
+    },
+    'generate_metadata': {
+        'description': '모델 메타데이터 생성',
+        'script': 'generate_model_metadata.py',
+        'config_key': 'metadata_config'
+    },
+    'validate_metadata': {
+        'description': '모델 메타데이터 검증',
+        'script': 'validate_model_metadata.py',
+        'config_key': 'validation_config'
+    },
+    'cleanup_models': {
+        'description': '사용하지 않는 모델 정리',
+        'script': 'cleanup_models.py',
+        'config_key': 'cleanup_config'
+    },
+    'restructure_models': {
+        'description': '모델 디렉토리 구조 재정리',
+        'script': 'restructure_models.py',
+        'config_key': 'restructure_config'
+    }
+}
+
+def run_model_management_task(task_name, config_file=None):
+    """모델 관리 작업 실행"""
+    if task_name not in MODEL_MANAGEMENT_TASKS:
+        raise ValueError(f"Unknown task: {task_name}")
+    
+    task_config = MODEL_MANAGEMENT_TASKS[task_name]
+    script_path = f"scripts/development/model_management/{task_config['script']}"
+    
+    if not os.path.exists(script_path):
+        raise FileNotFoundError(f"Script not found: {script_path}")
+    
+    # 스크립트 실행
+    cmd = [sys.executable, script_path]
+    if config_file:
+        cmd.extend(['--config', config_file])
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    return {
+        'returncode': result.returncode,
+        'stdout': result.stdout,
+        'stderr': result.stderr,
+        'success': result.returncode == 0
+    }
+```
+
+## 📊 데이터셋 관리 자동화
+
+### 데이터셋 파이프라인 자동화
+```python
+# scripts/development/dataset_pipeline.py 구현 표준
+DATASET_PIPELINE_STAGES = {
+    'setup': {
+        'description': '도메인 디렉토리 구조 및 클래스 맵 설정',
+        'function': 'setup_domain',
+        'dependencies': []
+    },
+    'split': {
+        'description': '데이터셋 분할 (train/validation/test)',
+        'function': 'split_dataset',
+        'dependencies': ['setup']
+    },
+    'augment': {
+        'description': '데이터 증강',
+        'function': 'augment_dataset',
+        'dependencies': ['split']
+    },
+    'preprocess': {
+        'description': '데이터 전처리',
+        'function': 'preprocess_dataset',
+        'dependencies': ['augment']
+    },
+    'validate': {
+        'description': '데이터셋 검증',
+        'function': 'validate_dataset',
+        'dependencies': ['preprocess']
+    }
+}
+
+def run_dataset_pipeline(domain, config, stages=None):
+    """데이터셋 처리 파이프라인 실행"""
+    if stages is None:
+        stages = list(DATASET_PIPELINE_STAGES.keys())
+    
+    results = {}
+    
+    for stage in stages:
+        if stage not in DATASET_PIPELINE_STAGES:
+            results[stage] = {'status': 'error', 'message': f'Unknown stage: {stage}'}
+            continue
+        
+        stage_config = DATASET_PIPELINE_STAGES[stage]
+        
+        # 의존성 확인
+        for dependency in stage_config['dependencies']:
+            if dependency not in results or results[dependency]['status'] != 'success':
+                results[stage] = {'status': 'skipped', 'message': f'Dependency {dependency} failed'}
+                continue
+        
+        try:
+            function = globals()[stage_config['function']]
+            result = function(domain, config)
+            results[stage] = {'status': 'success', 'result': result}
+            
+        except Exception as e:
+            results[stage] = {'status': 'error', 'message': str(e)}
+    
+    return results
+```
+
+## 🔍 코드 품질 자동화
+
+### 코드 승격 자동화
+```python
+# scripts/development/code_promotion/ 구현 표준
+CODE_PROMOTION_CRITERIA = {
+    'reusability': {
+        'description': '여러 모듈에서 재사용 가능성',
+        'weight': 0.3,
+        'threshold': 0.7,
+        'analyzer': 'analyze_reusability'
+    },
+    'stability': {
+        'description': '코드의 안정성 및 테스트 커버리지',
+        'weight': 0.25,
+        'threshold': 0.8,
+        'analyzer': 'analyze_stability'
+    },
+    'generality': {
+        'description': '코드의 범용성',
+        'weight': 0.25,
+        'threshold': 0.7,
+        'analyzer': 'analyze_generality'
+    },
+    'duplication': {
+        'description': '코드 중복 정도',
+        'weight': 0.2,
+        'threshold': 0.6,
+        'analyzer': 'analyze_duplication'
+    }
+}
+
+def analyze_promotion_candidate(file_path):
+    """코드 승격 후보 분석"""
+    scores = {}
+    
+    # 재사용성 분석
+    scores['reusability'] = analyze_reusability(file_path)
+    
+    # 안정성 분석
+    scores['stability'] = analyze_stability(file_path)
+    
+    # 범용성 분석
+    scores['generality'] = analyze_generality(file_path)
+    
+    # 중복 분석
+    scores['duplication'] = analyze_duplication(file_path)
+    
+    # 총점 계산
+    total_score = sum(
+        scores[criterion] * config['weight']
+        for criterion, config in CODE_PROMOTION_CRITERIA.items()
+    )
+    
+    # 승격 자격 판정
+    eligible = all(
+        scores[criterion] >= config['threshold']
+        for criterion, config in CODE_PROMOTION_CRITERIA.items()
+    )
+    
+    return {
+        'file_path': file_path,
+        'total_score': total_score,
+        'scores': scores,
+        'eligible': eligible,
+        'recommendation': 'promote' if eligible and total_score >= 0.7 else 'keep'
+    }
+```
+
+## 🤖 CI/CD 파이프라인
+
+### GitHub Actions 워크플로우
+```yaml
+# .github/workflows/vision-system-ci.yml
+name: Vision System CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black isort flake8 mypy bandit safety
+        pip install -r requirements.txt
+    
+    - name: Code formatting with Black
+      run: black --check .
+    
+    - name: Import sorting with isort
+      run: isort --check-only .
+    
+    - name: Linting with flake8
+      run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    
+    - name: Type checking with mypy
+      run: mypy domains/ shared/ common/
+    
+    - name: Security scan with bandit
+      run: bandit -r domains/ shared/ common/ -f json -o bandit-report.json
+    
+    - name: Safety check for dependencies
+      run: safety check
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint-and-format
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, 3.10]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-xdist
+    
+    - name: Run tests
+      run: |
+        pytest tests/ --cov=domains --cov=shared --cov=common --cov-report=xml
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+
+  validate-structure:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Validate project structure
+      run: |
+        python scripts/validation/validate_project_structure.py
+    
+    - name: Validate rules compliance
+      run: |
+        python scripts/validation/validate_rules.py
+```
+
+### Pre-commit 훅 설정
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=88, --extend-ignore=E203]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.3.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-PyYAML, types-requests]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        args: ["-r", "domains/", "shared/", "common/"]
+
+  - repo: local
+    hooks:
+      - id: validate-structure
+        name: Validate Project Structure
+        entry: python scripts/validation/validate_project_structure.py
+        language: system
+        pass_filenames: false
+```
+
+## 🔧 개발 도구 자동 설정
+
+### 코딩 도구 설정 및 설치
+```python
+# scripts/setup/setup_coding_tools.py
+REQUIRED_TOOLS = {
+    'black': {
+        'version': '23.3.0',
+        'purpose': 'Python 코드 자동 포맷팅',
+        'config_file': 'pyproject.toml',
+        'installation': 'pip install black==23.3.0'
+    },
+    'isort': {
+        'version': '5.12.0',
+        'purpose': 'Python import 문 자동 정렬',
+        'config_file': 'pyproject.toml',
+        'installation': 'pip install isort==5.12.0'
+    },
+    'flake8': {
+        'version': '6.0.0',
+        'purpose': 'Python 코드 린팅',
+        'config_file': '.flake8',
+        'installation': 'pip install flake8==6.0.0'
+    },
+    'pylint': {
+        'version': '2.17.0',
+        'purpose': 'Python 코드 정적 분석',
+        'config_file': '.pylintrc',
+        'installation': 'pip install pylint==2.17.0'
+    },
+    'mypy': {
+        'version': '1.3.0',
+        'purpose': 'Python 타입 체킹',
+        'config_file': 'pyproject.toml',
+        'installation': 'pip install mypy==1.3.0'
+    }
+}
+
+def setup_development_tools():
+    """개발 도구 자동 설치 및 설정"""
+    for tool_name, tool_config in REQUIRED_TOOLS.items():
+        install_tool(tool_name, tool_config)
+        generate_config_file(tool_name, tool_config)
+
+def install_tool(tool_name, tool_config):
+    """도구 설치"""
+    print(f"Installing {tool_name}...")
+    subprocess.run(tool_config['installation'].split(), check=True)
+    print(f"✓ {tool_name} installed successfully")
+
+def generate_config_file(tool_name, tool_config):
+    """설정 파일 생성"""
+    config_file = tool_config['config_file']
+    
+    if tool_name == 'black' and config_file == 'pyproject.toml':
+        config_content = """
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310']
+include = '\\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \\.eggs
+  | \\.git
+  | \\.mypy_cache
+  | \\.tox
+  | \\.venv
+  | build
+  | dist
+)/
+'''
+"""
+    elif tool_name == 'isort' and config_file == 'pyproject.toml':
+        config_content = """
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+include_trailing_comma = true
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+known_first_party = ["domains", "shared", "common"]
+"""
+    elif tool_name == 'flake8' and config_file == '.flake8':
+        config_content = """[flake8]
+max-line-length = 88
+extend-ignore = E203, E266, E501, W503
+max-complexity = 18
+select = B,C,E,F,W,T4,B9
+exclude = 
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .mypy_cache,
+    .venv,
+    build,
+    dist
+"""
+    
+    # 설정 파일 작성 (기존 파일이 있으면 업데이트)
+    if config_content:
+        with open(config_file, 'w') as f:
+            f.write(config_content)
+        print(f"✓ {config_file} generated for {tool_name}")
+```
+
+### Git 훅 자동 설정
+```python
+# scripts/setup/setup_git_hooks.py
+GIT_HOOKS = {
+    'pre-commit': {
+        'checks': ['validate_rules', 'code_style_check', 'docstring_check'],
+        'script_content': '''#!/bin/sh
+# Pre-commit hook for vision system
+
+echo "Running pre-commit checks..."
+
+# Code style check
+python scripts/validation/check_code_style.py --auto-fix
+if [ $? -ne 0 ]; then
+    echo "❌ Code style check failed"
+    exit 1
+fi
+
+# Rules validation
+python scripts/validation/validate_rules.py
+if [ $? -ne 0 ]; then
+    echo "❌ Rules validation failed"
+    exit 1
+fi
+
+echo "✓ All pre-commit checks passed"
+exit 0
+'''
+    },
+    'pre-push': {
+        'checks': ['validate_rules', 'security_check'],
+        'script_content': '''#!/bin/sh
+# Pre-push hook for vision system
+
+echo "Running pre-push checks..."
+
+# Security check
+bandit -r domains/ shared/ common/ -f json -o bandit-report.json
+if [ $? -ne 0 ]; then
+    echo "❌ Security check failed"
+    exit 1
+fi
+
+# Safety check
+safety check
+if [ $? -ne 0 ]; then
+    echo "❌ Dependency safety check failed"
+    exit 1
+fi
+
+echo "✓ All pre-push checks passed"
+exit 0
+'''
+    }
+}
+
+def setup_git_hooks():
+    """Git 훅 자동 설치"""
+    hooks_dir = ".git/hooks"
+    
+    if not os.path.exists(hooks_dir):
+        print("Git repository not found")
+        return
+    
+    for hook_name, hook_config in GIT_HOOKS.items():
+        hook_path = os.path.join(hooks_dir, hook_name)
+        
+        with open(hook_path, 'w') as f:
+            f.write(hook_config['script_content'])
+        
+        # 실행 권한 부여
+        os.chmod(hook_path, 0o755)
+        
+        print(f"✓ {hook_name} hook installed")
+```
+
+## 📊 코드 품질 자동 검사
+
+### 코드 스타일 자동 검사
+```python
+# scripts/validation/check_code_style.py
+def check_code_style(files=None, auto_fix=False):
+    """
+    코드 스타일 검사 스크립트
+    
+    Args:
+        files: 검사할 파일 목록 (None이면 전체)
+        auto_fix: 자동 수정 여부
+    
+    Returns:
+        검사 결과 딕셔너리
+    """
+    results = {}
+    
+    # Black 코드 포맷팅 검사
+    if auto_fix:
+        result = subprocess.run(['black', '.'], capture_output=True, text=True)
+        results['black'] = {'status': 'fixed', 'output': result.stdout}
+    else:
+        result = subprocess.run(['black', '--check', '.'], capture_output=True, text=True)
+        results['black'] = {'passed': result.returncode == 0, 'output': result.stdout}
+    
+    # isort import 정렬 검사
+    if auto_fix:
+        result = subprocess.run(['isort', '.'], capture_output=True, text=True)
+        results['isort'] = {'status': 'fixed', 'output': result.stdout}
+    else:
+        result = subprocess.run(['isort', '--check-only', '.'], capture_output=True, text=True)
+        results['isort'] = {'passed': result.returncode == 0, 'output': result.stdout}
+    
+    # flake8 린팅 검사
+    result = subprocess.run(['flake8', '.'], capture_output=True, text=True)
+    results['flake8'] = {'passed': result.returncode == 0, 'output': result.stdout}
+    
+    # mypy 타입 체킹
+    result = subprocess.run(['mypy', 'domains/', 'shared/', 'common/'], capture_output=True, text=True)
+    results['mypy'] = {'passed': result.returncode == 0, 'output': result.stdout}
+    
+    return results
+
+def generate_style_report(results):
+    """코드 스타일 검사 리포트 생성"""
+    report = {
+        'timestamp': datetime.now().isoformat(),
+        'results': results,
+        'summary': {
+            'total_checks': len(results),
+            'passed': sum(1 for r in results.values() if r.get('passed', False)),
+            'failed': sum(1 for r in results.values() if not r.get('passed', True))
+        }
+    }
+    
+    with open('data/runtime/logs/code_style_report.json', 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    return report
+```
+
+## 🔄 자동 배포 스크립트
+
+### 스테이징 배포 자동화
+```python
+# scripts/deployment/deploy_staging.py
+def deploy_to_staging(version_tag=None):
+    """스테이징 환경 배포"""
+    
+    # 1. 코드 품질 검사
+    style_results = check_code_style()
+    if not all(r.get('passed', False) for r in style_results.values()):
+        raise Exception("Code style checks failed")
+    
+    # 2. 테스트 실행
+    test_result = subprocess.run(['pytest', 'tests/', '--cov=domains'], capture_output=True)
+    if test_result.returncode != 0:
+        raise Exception("Tests failed")
+    
+    # 3. Docker 이미지 빌드
+    build_result = subprocess.run([
+        'docker', 'build', 
+        '-t', f'vision-system:staging-{version_tag or "latest"}',
+        '.'
+    ], capture_output=True)
+    
+    if build_result.returncode != 0:
+        raise Exception("Docker build failed")
+    
+    # 4. 배포 실행
+    deploy_result = subprocess.run([
+        'docker', 'run', '-d',
+        '--name', 'vision-system-staging',
+        '-p', '8001:8000',
+        f'vision-system:staging-{version_tag or "latest"}'
+    ], capture_output=True)
+    
+    if deploy_result.returncode != 0:
+        raise Exception("Deployment failed")
+    
+    print("✓ Staging deployment completed successfully")
+    return True
+```
+
+
+---
+
+**적용 시점**: 팀 개발 시작 시 또는 코드 품질 자동화가 필요할 때
+**의존성**: `pip install black isort flake8 mypy bandit safety pre-commit`
+**설정**: GitHub Actions, pre-commit 훅, 코드 품질 도구 설정 필요
+
+

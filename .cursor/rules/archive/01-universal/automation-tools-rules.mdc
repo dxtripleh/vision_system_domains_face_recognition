@@ -1,0 +1,961 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 자동화 도구 규칙 (Automation Tools Rules)
+
+이 규칙은 개발 프로세스 자동화, CI/CD, 스크립트 관리, 코드 품질 도구에 관한 표준입니다.
+
+## 🔧 스크립트 자동화 규칙
+
+### 스크립트 네이밍 및 분류
+```python
+SCRIPT_CATEGORIES = {
+    'setup': {
+        'prefix': 'setup_',
+        'purpose': '개발 환경 설정 및 초기화',
+        'examples': ['setup_coding_tools.py', 'setup_git_hooks.py', 'setup_environment.py']
+    },
+    'check': {
+        'prefix': 'check_',
+        'purpose': '코드 품질 및 규칙 검증',
+        'examples': ['check_code_style.py', 'check_dependencies.py', 'check_security.py']
+    },
+    'validate': {
+        'prefix': 'validate_',
+        'purpose': '데이터 및 설정 검증',
+        'examples': ['validate_rules.py', 'validate_config.py', 'validate_data.py']
+    },
+    'generate': {
+        'prefix': 'generate_',
+        'purpose': '파일 및 코드 생성',
+        'examples': ['generate_docs.py', 'generate_config.py', 'generate_templates.py']
+    },
+    'deploy': {
+        'prefix': 'deploy_',
+        'purpose': '배포 및 릴리즈',
+        'examples': ['deploy_staging.py', 'deploy_production.py', 'deploy_docs.py']
+    },
+    'download': {
+        'prefix': 'download_',
+        'purpose': '모델 및 리소스 다운로드',
+        'examples': ['download_models.py', 'download_opencv_cascades.py', 'download_datasets.py']
+    },
+    'cleanup': {
+        'prefix': 'cleanup_',
+        'purpose': '정리 및 최적화',
+        'examples': ['cleanup_models.py', 'cleanup_weights.py', 'cleanup_temp_files.py']
+    }
+}
+```
+
+### 모델 관리 자동화
+```python
+# scripts/model_management/ 구현 표준
+MODEL_MANAGEMENT_TASKS = {
+    'download_models': {
+        'description': '모델 가중치 파일 다운로드',
+        'script': 'download_models.py',
+        'config_key': 'model_urls'
+    },
+    'download_opencv_cascades': {
+        'description': 'OpenCV Haar Cascade 파일 다운로드',
+        'script': 'download_opencv_cascades.py',
+        'config_key': 'cascade_urls'
+    },
+    'generate_metadata': {
+        'description': '모델 메타데이터 생성',
+        'script': 'generate_model_metadata.py',
+        'config_key': 'metadata_config'
+    },
+    'validate_metadata': {
+        'description': '모델 메타데이터 검증',
+        'script': 'validate_model_metadata.py',
+        'config_key': 'validation_config'
+    },
+    'cleanup_models': {
+        'description': '사용하지 않는 모델 정리',
+        'script': 'cleanup_models.py',
+        'config_key': 'cleanup_config'
+    },
+    'restructure_models': {
+        'description': '모델 디렉토리 구조 재정리',
+        'script': 'restructure_models.py',
+        'config_key': 'restructure_config'
+    }
+}
+
+def run_model_management_task(task_name, config_file=None):
+    """모델 관리 작업 실행"""
+    if task_name not in MODEL_MANAGEMENT_TASKS:
+        raise ValueError(f"Unknown task: {task_name}")
+    
+    task_config = MODEL_MANAGEMENT_TASKS[task_name]
+    script_path = f"scripts/model_management/{task_config['script']}"
+    
+    if not os.path.exists(script_path):
+        raise FileNotFoundError(f"Script not found: {script_path}")
+    
+    # 스크립트 실행
+    cmd = [sys.executable, script_path]
+    if config_file:
+        cmd.extend(['--config', config_file])
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    return {
+        'returncode': result.returncode,
+        'stdout': result.stdout,
+        'stderr': result.stderr,
+        'success': result.returncode == 0
+    }
+```
+
+## 📊 데이터셋 관리 자동화
+
+### 데이터셋 파이프라인 자동화
+```python
+# scripts/dataset_pipeline.py 구현 표준
+DATASET_PIPELINE_STAGES = {
+    'setup': {
+        'description': '도메인 디렉토리 구조 및 클래스 맵 설정',
+        'function': 'setup_domain',
+        'dependencies': []
+    },
+    'split': {
+        'description': '데이터셋 분할 (train/validation/test)',
+        'function': 'split_dataset',
+        'dependencies': ['setup']
+    },
+    'augment': {
+        'description': '데이터 증강',
+        'function': 'augment_dataset',
+        'dependencies': ['split']
+    },
+    'preprocess': {
+        'description': '데이터 전처리',
+        'function': 'preprocess_dataset',
+        'dependencies': ['augment']
+    },
+    'validate': {
+        'description': '데이터셋 검증',
+        'function': 'validate_dataset',
+        'dependencies': ['preprocess']
+    }
+}
+
+def run_dataset_pipeline(domain, config, stages=None):
+    """데이터셋 처리 파이프라인 실행"""
+    if stages is None:
+        stages = list(DATASET_PIPELINE_STAGES.keys())
+    
+    results = {}
+    
+    for stage in stages:
+        if stage not in DATASET_PIPELINE_STAGES:
+            results[stage] = {'status': 'error', 'message': f'Unknown stage: {stage}'}
+            continue
+        
+        stage_config = DATASET_PIPELINE_STAGES[stage]
+        
+        # 의존성 확인
+        for dependency in stage_config['dependencies']:
+            if dependency not in results or results[dependency]['status'] != 'success':
+                results[stage] = {'status': 'skipped', 'message': f'Dependency {dependency} failed'}
+                continue
+        
+        try:
+            function = globals()[stage_config['function']]
+            result = function(domain, config)
+            results[stage] = {'status': 'success', 'result': result}
+            
+        except Exception as e:
+            results[stage] = {'status': 'error', 'message': str(e)}
+    
+    return results
+```
+
+## 🔍 코드 품질 자동화
+
+### 코드 승격 자동화
+```python
+# scripts/code_promotion/ 구현 표준
+CODE_PROMOTION_CRITERIA = {
+    'reusability': {
+        'description': '여러 모듈에서 재사용 가능성',
+        'weight': 0.3,
+        'threshold': 0.7,
+        'analyzer': 'analyze_reusability'
+    },
+    'stability': {
+        'description': '코드의 안정성 및 테스트 커버리지',
+        'weight': 0.25,
+        'threshold': 0.8,
+        'analyzer': 'analyze_stability'
+    },
+    'generality': {
+        'description': '코드의 범용성',
+        'weight': 0.25,
+        'threshold': 0.7,
+        'analyzer': 'analyze_generality'
+    },
+    'duplication': {
+        'description': '코드 중복 정도',
+        'weight': 0.2,
+        'threshold': 0.6,
+        'analyzer': 'analyze_duplication'
+    }
+}
+
+def analyze_promotion_candidates(source_path):
+    """코드 승격 후보 분석"""
+    candidates = []
+    
+    for root, dirs, files in os.walk(source_path):
+        for file in files:
+            if file.endswith('.py'):
+                file_path = os.path.join(root, file)
+                
+                scores = {}
+                total_score = 0
+                
+                for criterion, config in CODE_PROMOTION_CRITERIA.items():
+                    analyzer = globals()[config['analyzer']]
+                    score = analyzer(file_path)
+                    scores[criterion] = score
+                    total_score += score * config['weight']
+                
+                if total_score >= 0.7:  # 전체 점수 임계값
+                    candidates.append({
+                        'file_path': file_path,
+                        'total_score': total_score,
+                        'scores': scores,
+                        'eligible': all(
+                            scores[criterion] >= config['threshold']
+                            for criterion, config in CODE_PROMOTION_CRITERIA.items()
+                        )
+                    })
+    
+    return candidates
+```
+
+### 구조 검증 자동화
+```python
+# scripts/validate_structure.py 구현 표준
+STRUCTURE_VALIDATION_RULES = {
+    'root_structure': {
+        'description': '루트 디렉토리 구조 검증',
+        'validator': 'validate_root_structure',
+        'severity': 'error'
+    },
+    'common_structure': {
+        'description': 'common 디렉토리 구조 검증',
+        'validator': 'validate_common_structure',
+        'severity': 'error'
+    },
+    'layer_dependencies': {
+        'description': '계층 간 의존성 검증',
+        'validator': 'validate_layer_dependencies',
+        'severity': 'error'
+    },
+    'file_naming': {
+        'description': '파일 네이밍 규칙 검증',
+        'validator': 'validate_file_naming',
+        'severity': 'warning'
+    },
+    'import_rules': {
+        'description': 'Import 규칙 검증',
+        'validator': 'validate_import_rules',
+        'severity': 'warning'
+    }
+}
+
+def run_structure_validation(rules=None, fail_on_warning=False):
+    """구조 검증 실행"""
+    if rules is None:
+        rules = list(STRUCTURE_VALIDATION_RULES.keys())
+    
+    results = {}
+    has_errors = False
+    has_warnings = False
+    
+    for rule_name in rules:
+        if rule_name not in STRUCTURE_VALIDATION_RULES:
+            results[rule_name] = {
+                'status': 'error',
+                'message': f'Unknown rule: {rule_name}'
+            }
+            has_errors = True
+            continue
+        
+        rule_config = STRUCTURE_VALIDATION_RULES[rule_name]
+        
+        try:
+            validator = globals()[rule_config['validator']]
+            result = validator()
+            
+            results[rule_name] = {
+                'status': 'success' if result['valid'] else rule_config['severity'],
+                'valid': result['valid'],
+                'errors': result.get('errors', []),
+                'warnings': result.get('warnings', []),
+                'info': result.get('info', {})
+            }
+            
+            if not result['valid']:
+                if rule_config['severity'] == 'error':
+                    has_errors = True
+                else:
+                    has_warnings = True
+                    
+        except Exception as e:
+            results[rule_name] = {
+                'status': 'error',
+                'message': str(e)
+            }
+            has_errors = True
+    
+    # 전체 결과 판정
+    overall_status = 'success'
+    if has_errors:
+        overall_status = 'error'
+    elif has_warnings and fail_on_warning:
+        overall_status = 'error'
+    elif has_warnings:
+        overall_status = 'warning'
+    
+    return {
+        'overall_status': overall_status,
+        'results': results,
+        'summary': {
+            'total_rules': len(rules),
+            'passed': sum(1 for r in results.values() if r['status'] == 'success'),
+            'warnings': sum(1 for r in results.values() if r['status'] == 'warning'),
+            'errors': sum(1 for r in results.values() if r['status'] == 'error')
+        }
+    }
+```
+
+## 🚀 CI/CD 통합
+
+### GitHub Actions 워크플로우
+```yaml
+# .github/workflows/structure_validation.yml
+name: Structure Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-structure:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Validate project structure
+      run: |
+        python scripts/validate_structure.py --fail-on-warning
+    
+    - name: Validate code style
+      run: |
+        python scripts/check_code_style.py
+    
+    - name: Run tests
+      run: |
+        python -m pytest tests/ --cov=src/ --cov-report=xml
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+```
+
+### Pre-commit 설정
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        language_version: python3.9
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=88, --extend-ignore=E203,W503]
+
+  - repo: local
+    hooks:
+      - id: validate-structure
+        name: Validate project structure
+        entry: python scripts/validate_structure.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: check-naming-conventions
+        name: Check file naming conventions
+        entry: python scripts/check_naming_conventions.py
+        language: system
+        files: \.py$
+```
+
+## 📈 자동화 모니터링 및 보고
+
+### 자동화 보고서 생성
+```python
+# scripts/generate_automation_report.py 구현 표준
+REPORT_SECTIONS = {
+    'structure_validation': {
+        'title': '프로젝트 구조 검증',
+        'generator': 'generate_structure_report',
+        'output_file': 'structure_validation_report.md'
+    },
+    'code_quality': {
+        'title': '코드 품질 분석',
+        'generator': 'generate_quality_report',
+        'output_file': 'code_quality_report.md'
+    },
+    'test_coverage': {
+        'title': '테스트 커버리지',
+        'generator': 'generate_coverage_report',
+        'output_file': 'test_coverage_report.md'
+    },
+    'dependency_analysis': {
+        'title': '의존성 분석',
+        'generator': 'generate_dependency_report',
+        'output_file': 'dependency_analysis_report.md'
+    }
+}
+
+def generate_comprehensive_report(output_dir="data/reports/automation"):
+    """종합 자동화 보고서 생성"""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    reports = {}
+    
+    for section_name, config in REPORT_SECTIONS.items():
+        try:
+            generator = globals()[config['generator']]
+            report_content = generator()
+            
+            output_path = os.path.join(output_dir, config['output_file'])
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            
+            reports[section_name] = {
+                'status': 'success',
+                'output_file': output_path,
+                'title': config['title']
+            }
+            
+        except Exception as e:
+            reports[section_name] = {
+                'status': 'error',
+                'message': str(e),
+                'title': config['title']
+            }
+    
+    # 종합 보고서 생성
+    summary_report = generate_summary_report(reports)
+    summary_path = os.path.join(output_dir, 'automation_summary.md')
+    with open(summary_path, 'w', encoding='utf-8') as f:
+        f.write(summary_report)
+    
+    return {
+        'summary_report': summary_path,
+        'section_reports': reports
+    }
+```
+
+이 자동화 도구 규칙은 개발 프로세스의 효율성을 높이고 코드 품질을 보장하는 데 중요한 역할을 합니다.
+
+## 🔄 스크립트 개발 규칙 (멱등성, 백업, 롤백)
+
+### 멱등성 보장 규칙
+모든 스크립트는 여러 번 실행해도 동일한 결과를 보장해야 합니다:
+
+```python
+# scripts/idempotent_script_template.py
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+멱등성을 보장하는 스크립트 템플릿
+
+이 스크립트는 여러 번 실행해도 동일한 결과를 보장합니다.
+"""
+
+import os
+import sys
+import json
+import logging
+import hashlib
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+class IdempotentScript:
+    """멱등성을 보장하는 스크립트 기본 클래스"""
+    
+    def __init__(self, script_name: str, state_dir: str = "data/script_states"):
+        self.script_name = script_name
+        self.state_dir = Path(state_dir)
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.state_file = self.state_dir / f"{script_name}_state.json"
+        self.logger = logging.getLogger(script_name)
+        
+        # 이전 상태 로드
+        self.previous_state = self._load_state()
+        self.current_state = {}
+    
+    def _load_state(self) -> Dict[str, Any]:
+        """이전 실행 상태 로드"""
+        if not self.state_file.exists():
+            return {}
+        
+        try:
+            with open(self.state_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.warning(f"상태 파일 로드 실패: {e}")
+            return {}
+    
+    def _save_state(self):
+        """현재 상태 저장"""
+        try:
+            with open(self.state_file, 'w', encoding='utf-8') as f:
+                json.dump(self.current_state, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self.logger.error(f"상태 파일 저장 실패: {e}")
+    
+    def _calculate_checksum(self, file_path: str) -> str:
+        """파일 체크섬 계산"""
+        if not os.path.exists(file_path):
+            return ""
+        
+        hash_md5 = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+    
+    def should_execute(self, operation_id: str, **params) -> bool:
+        """작업 실행 여부 결정"""
+        # 매개변수 기반 해시 생성
+        param_hash = hashlib.md5(
+            json.dumps(params, sort_keys=True).encode()
+        ).hexdigest()
+        
+        # 이전 실행 정보 확인
+        prev_execution = self.previous_state.get(operation_id, {})
+        
+        if prev_execution.get('param_hash') == param_hash:
+            self.logger.info(f"작업 '{operation_id}' 이미 실행됨 (스킵)")
+            return False
+        
+        return True
+    
+    def mark_completed(self, operation_id: str, **params):
+        """작업 완료 표시"""
+        param_hash = hashlib.md5(
+            json.dumps(params, sort_keys=True).encode()
+        ).hexdigest()
+        
+        self.current_state[operation_id] = {
+            'param_hash': param_hash,
+            'completed_at': str(datetime.now()),
+            'status': 'completed'
+        }
+    
+    def execute(self):
+        """스크립트 실행 (하위 클래스에서 구현)"""
+        raise NotImplementedError("execute 메서드를 구현해야 합니다.")
+    
+    def run(self):
+        """스크립트 실행 및 상태 관리"""
+        try:
+            self.execute()
+            self._save_state()
+            self.logger.info("스크립트 실행 완료")
+        except Exception as e:
+            self.logger.error(f"스크립트 실행 실패: {e}")
+            raise
+
+# 사용 예시
+class ModelDownloadScript(IdempotentScript):
+    """모델 다운로드 스크립트 예시"""
+    
+    def execute(self):
+        models_to_download = [
+            {'name': 'yolov8n', 'url': 'https://...', 'path': 'models/weights/yolov8n.pt'},
+            {'name': 'yolov8s', 'url': 'https://...', 'path': 'models/weights/yolov8s.pt'}
+        ]
+        
+        for model in models_to_download:
+            operation_id = f"download_{model['name']}"
+            
+            if self.should_execute(operation_id, **model):
+                self._download_model(model)
+                self.mark_completed(operation_id, **model)
+    
+    def _download_model(self, model: dict):
+        """모델 다운로드 (실제 구현)"""
+        # 다운로드 로직
+        self.logger.info(f"모델 다운로드: {model['name']}")
+        # download_file(model['url'], model['path'])
+```
+
+### 자동 백업 시스템
+```python
+# common/utils/backup_system.py
+import os
+import shutil
+import datetime
+import tarfile
+from pathlib import Path
+from typing import List, Optional
+
+class AutoBackupSystem:
+    """자동 백업 시스템"""
+    
+    def __init__(self, backup_dir: str = "data/backups"):
+        self.backup_dir = Path(backup_dir)
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        self.max_backups = 10  # 최대 백업 개수
+    
+    def create_backup(self, source_paths: List[str], backup_name: str = None) -> str:
+        """백업 생성"""
+        if backup_name is None:
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_name = f"backup_{timestamp}"
+        
+        backup_path = self.backup_dir / f"{backup_name}.tar.gz"
+        
+        with tarfile.open(backup_path, 'w:gz') as tar:
+            for source_path in source_paths:
+                if os.path.exists(source_path):
+                    tar.add(source_path, arcname=os.path.basename(source_path))
+        
+        # 오래된 백업 정리
+        self._cleanup_old_backups()
+        
+        return str(backup_path)
+    
+    def restore_backup(self, backup_path: str, restore_dir: str = "."):
+        """백업 복원"""
+        if not os.path.exists(backup_path):
+            raise FileNotFoundError(f"백업 파일을 찾을 수 없습니다: {backup_path}")
+        
+        with tarfile.open(backup_path, 'r:gz') as tar:
+            tar.extractall(path=restore_dir)
+    
+    def list_backups(self) -> List[str]:
+        """백업 목록 조회"""
+        backups = []
+        for backup_file in self.backup_dir.glob("backup_*.tar.gz"):
+            backups.append(str(backup_file))
+        return sorted(backups, reverse=True)  # 최신순 정렬
+    
+    def _cleanup_old_backups(self):
+        """오래된 백업 정리"""
+        backups = self.list_backups()
+        if len(backups) > self.max_backups:
+            for old_backup in backups[self.max_backups:]:
+                os.remove(old_backup)
+
+# 스크립트에서 백업 시스템 사용
+def with_backup(backup_paths: List[str]):
+    """백업을 포함한 데코레이터"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            backup_system = AutoBackupSystem()
+            
+            # 실행 전 백업
+            backup_path = backup_system.create_backup(
+                backup_paths, 
+                f"pre_{func.__name__}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
+            
+            try:
+                result = func(*args, **kwargs)
+                return result
+            except Exception as e:
+                # 실패 시 백업 복원 옵션 제공
+                print(f"실행 실패: {e}")
+                print(f"백업 파일: {backup_path}")
+                print("백업을 복원하려면 다음 명령을 실행하세요:")
+                print(f"python -c \"from common.utils.backup_system import AutoBackupSystem; AutoBackupSystem().restore_backup('{backup_path}')\"")
+                raise
+        return wrapper
+    return decorator
+```
+
+### 롤백 메커니즘
+```python
+# common/utils/rollback_manager.py
+import json
+import logging
+from typing import Dict, List, Any, Callable
+from dataclasses import dataclass, asdict
+from datetime import datetime
+
+@dataclass
+class RollbackAction:
+    """롤백 액션 정의"""
+    action_type: str  # 'file_restore', 'command_execute', 'config_restore'
+    description: str
+    data: Dict[str, Any]
+    timestamp: str
+
+class RollbackManager:
+    """롤백 관리자"""
+    
+    def __init__(self, transaction_id: str = None):
+        self.transaction_id = transaction_id or f"txn_{int(datetime.now().timestamp())}"
+        self.rollback_actions: List[RollbackAction] = []
+        self.logger = logging.getLogger(__name__)
+    
+    def add_file_backup(self, file_path: str):
+        """파일 백업 추가"""
+        if os.path.exists(file_path):
+            backup_content = self._read_file_content(file_path)
+            action = RollbackAction(
+                action_type='file_restore',
+                description=f'파일 복원: {file_path}',
+                data={
+                    'file_path': file_path,
+                    'original_content': backup_content
+                },
+                timestamp=datetime.now().isoformat()
+            )
+            self.rollback_actions.append(action)
+    
+    def add_command_rollback(self, rollback_command: str, description: str = ""):
+        """명령어 롤백 추가"""
+        action = RollbackAction(
+            action_type='command_execute',
+            description=description or f'명령어 실행: {rollback_command}',
+            data={'command': rollback_command},
+            timestamp=datetime.now().isoformat()
+        )
+        self.rollback_actions.append(action)
+    
+    def add_config_backup(self, config_key: str, config_value: Any):
+        """설정 백업 추가"""
+        action = RollbackAction(
+            action_type='config_restore',
+            description=f'설정 복원: {config_key}',
+            data={
+                'config_key': config_key,
+                'original_value': config_value
+            },
+            timestamp=datetime.now().isoformat()
+        )
+        self.rollback_actions.append(action)
+    
+    def execute_rollback(self):
+        """롤백 실행"""
+        self.logger.info(f"롤백 시작: {self.transaction_id}")
+        
+        # 역순으로 롤백 실행
+        for action in reversed(self.rollback_actions):
+            try:
+                self._execute_action(action)
+                self.logger.info(f"롤백 완료: {action.description}")
+            except Exception as e:
+                self.logger.error(f"롤백 실패: {action.description} - {e}")
+    
+    def _execute_action(self, action: RollbackAction):
+        """개별 액션 실행"""
+        if action.action_type == 'file_restore':
+            file_path = action.data['file_path']
+            content = action.data['original_content']
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+        
+        elif action.action_type == 'command_execute':
+            command = action.data['command']
+            os.system(command)
+        
+        elif action.action_type == 'config_restore':
+            # 설정 복원 로직 (구현 필요)
+            pass
+    
+    def _read_file_content(self, file_path: str) -> str:
+        """파일 내용 읽기"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception:
+            return ""
+    
+    def save_rollback_plan(self, file_path: str = None):
+        """롤백 계획 저장"""
+        if file_path is None:
+            file_path = f"data/rollback_plans/rollback_{self.transaction_id}.json"
+        
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        rollback_data = {
+            'transaction_id': self.transaction_id,
+            'created_at': datetime.now().isoformat(),
+            'actions': [asdict(action) for action in self.rollback_actions]
+        }
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(rollback_data, f, indent=2, ensure_ascii=False)
+
+# 사용 예시: 롤백 지원 스크립트
+def safe_script_execution(func):
+    """안전한 스크립트 실행 데코레이터"""
+    def wrapper(*args, **kwargs):
+        rollback_manager = RollbackManager()
+        
+        try:
+            # 실행 전 중요 파일들 백업
+            important_files = [
+                'config/main_config.yaml',
+                'models/current_model.pt'
+            ]
+            
+            for file_path in important_files:
+                if os.path.exists(file_path):
+                    rollback_manager.add_file_backup(file_path)
+            
+            # 롤백 계획 저장
+            rollback_manager.save_rollback_plan()
+            
+            # 함수 실행
+            result = func(*args, **kwargs)
+            
+            return result
+            
+        except Exception as e:
+            # 실패 시 자동 롤백
+            print(f"실행 실패, 롤백 시작: {e}")
+            rollback_manager.execute_rollback()
+            raise
+    
+    return wrapper
+
+# 사용 예시
+@safe_script_execution
+def risky_model_update():
+    """위험한 모델 업데이트 작업"""
+    # 모델 업데이트 로직
+    pass
+```
+
+### 스크립트 실행 상태 모니터링
+```python
+# common/utils/script_monitor.py
+import time
+import psutil
+import threading
+from typing import Dict, Any
+from datetime import datetime
+
+class ScriptMonitor:
+    """스크립트 실행 모니터링"""
+    
+    def __init__(self, script_name: str):
+        self.script_name = script_name
+        self.start_time = datetime.now()
+        self.monitoring = False
+        self.metrics = {
+            'cpu_usage': [],
+            'memory_usage': [],
+            'execution_time': 0,
+            'status': 'running'
+        }
+    
+    def start_monitoring(self):
+        """모니터링 시작"""
+        self.monitoring = True
+        self.monitor_thread = threading.Thread(target=self._monitor_loop)
+        self.monitor_thread.daemon = True
+        self.monitor_thread.start()
+    
+    def stop_monitoring(self):
+        """모니터링 중지"""
+        self.monitoring = False
+        self.metrics['execution_time'] = (datetime.now() - self.start_time).total_seconds()
+        self.metrics['status'] = 'completed'
+    
+    def _monitor_loop(self):
+        """모니터링 루프"""
+        while self.monitoring:
+            # CPU 및 메모리 사용률 수집
+            cpu_percent = psutil.cpu_percent(interval=1)
+            memory_percent = psutil.virtual_memory().percent
+            
+            self.metrics['cpu_usage'].append(cpu_percent)
+            self.metrics['memory_usage'].append(memory_percent)
+            
+            time.sleep(5)  # 5초마다 수집
+    
+    def get_summary(self) -> Dict[str, Any]:
+        """실행 요약 반환"""
+        return {
+            'script_name': self.script_name,
+            'start_time': self.start_time.isoformat(),
+            'execution_time': self.metrics['execution_time'],
+            'avg_cpu_usage': sum(self.metrics['cpu_usage']) / len(self.metrics['cpu_usage']) if self.metrics['cpu_usage'] else 0,
+            'avg_memory_usage': sum(self.metrics['memory_usage']) / len(self.metrics['memory_usage']) if self.metrics['memory_usage'] else 0,
+            'status': self.metrics['status']
+        }
+
+# 모니터링 데코레이터
+def monitor_execution(func):
+    """실행 모니터링 데코레이터"""
+    def wrapper(*args, **kwargs):
+        monitor = ScriptMonitor(func.__name__)
+        monitor.start_monitoring()
+        
+        try:
+            result = func(*args, **kwargs)
+            monitor.stop_monitoring()
+            
+            # 실행 요약 출력
+            summary = monitor.get_summary()
+            print(f"\n=== 실행 요약: {summary['script_name']} ===")
+            print(f"실행 시간: {summary['execution_time']:.2f}초")
+            print(f"평균 CPU 사용률: {summary['avg_cpu_usage']:.1f}%")
+            print(f"평균 메모리 사용률: {summary['avg_memory_usage']:.1f}%")
+            print(f"상태: {summary['status']}")
+            
+            return result
+            
+        except Exception as e:
+            monitor.stop_monitoring()
+            monitor.metrics['status'] = 'failed'
+            raise
+    
+    return wrapper
+```
+
+
+
+

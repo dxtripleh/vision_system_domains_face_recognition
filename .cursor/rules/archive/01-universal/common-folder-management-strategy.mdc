@@ -1,0 +1,500 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Common 폴더 관리 전략 (Common Folder Management Strategy)
+
+## 🎯 목적
+
+**Common 폴더**는 모든 도메인에서 공통으로 사용되는 범용 유틸리티와 기능을 제공하는 핵심 기반 계층입니다.  
+도메인 독립적이며 비즈니스 로직을 포함하지 않는 순수한 기술적 유틸리티만을 포함합니다.
+
+## 📁 Common 폴더 표준 구조
+
+### 필수 구조 (모든 프로젝트 공통)
+```
+common/
+├── __init__.py                 # 필수
+├── README.md                   # 필수 - 전체 개요
+├── CHANGELOG.md                # 필수 - 변경 이력
+├── constants.py                # 필수 - 전역 상수
+├── enums.py                    # 필수 - 공통 열거형
+├── config/                     # 설정 관리
+│   ├── __init__.py
+│   ├── README.md
+│   ├── config_manager.py       # 설정 로딩/관리
+│   ├── loader.py               # 설정 파일 로더
+│   └── validator.py            # 설정 유효성 검사
+├── file/                       # 파일 입출력
+│   ├── __init__.py
+│   ├── README.md
+│   ├── image_io.py             # 이미지 파일 처리
+│   ├── video_io.py             # 비디오 파일 처리
+│   ├── json_utils.py           # JSON 유틸리티
+│   └── yaml_utils.py           # YAML 유틸리티
+├── logging/                    # 로깅 시스템
+│   ├── __init__.py
+│   ├── README.md
+│   ├── logger.py               # 로거 설정
+│   ├── filters.py              # 로그 필터
+│   ├── formatters.py           # 로그 포맷터
+│   └── handlers.py             # 로그 핸들러
+└── utils/                      # 범용 유틸리티
+    ├── __init__.py
+    ├── README.md
+    ├── hardware_detector.py    # 하드웨어 감지
+    ├── path_utils.py           # 경로 유틸리티
+    └── time_utils.py           # 시간 유틸리티
+```
+
+### 비전 시스템 특화 추가 구조 (선택적)
+```
+common/
+├── camera/                     # 카메라 관련 유틸리티
+│   ├── __init__.py
+│   ├── README.md
+│   ├── camera_detector.py      # 카메라 감지
+│   ├── stream_utils.py         # 스트림 유틸리티
+│   └── codec_utils.py          # 코덱 유틸리티
+├── image/                      # 이미지 기본 처리
+│   ├── __init__.py
+│   ├── README.md
+│   ├── basic_ops.py            # 기본 이미지 연산
+│   ├── format_converter.py     # 포맷 변환
+│   └── quality_checker.py      # 품질 검사
+└── validation/                 # 데이터 검증
+    ├── __init__.py
+    ├── README.md
+    ├── type_checker.py          # 타입 검증
+    ├── range_validator.py       # 범위 검증
+    └── format_validator.py      # 포맷 검증
+```
+
+## 🔄 코드 승격 시스템 (Domains → Shared → Common)
+
+### 승격 경로 및 기준
+```python
+CODE_PROMOTION_PATH = {
+    'domains': {
+        'target': 'shared',
+        'criteria': '2개 이상 도메인에서 사용',
+        'review_process': 'domain_team_review'
+    },
+    'shared': {
+        'target': 'common',
+        'criteria': '완전한 도메인 독립성 + 범용성',
+        'review_process': 'architecture_team_review'
+    }
+}
+
+# 승격 기준 상세
+PROMOTION_CRITERIA = {
+    'domains_to_shared': {
+        'reusability': {
+            'min_domain_usage': 2,           # 최소 2개 도메인에서 사용
+            'usage_frequency': 'high',       # 높은 사용 빈도
+            'weight': 0.4
+        },
+        'abstraction_level': {
+            'domain_independence': 0.8,      # 80% 이상 도메인 독립적
+            'business_logic_free': True,     # 비즈니스 로직 없음
+            'weight': 0.3
+        },
+        'stability': {
+            'test_coverage': 0.9,            # 90% 이상 테스트 커버리지
+            'api_stability': True,           # 안정적인 API
+            'weight': 0.3
+        }
+    },
+    'shared_to_common': {
+        'universality': {
+            'domain_agnostic': True,         # 완전한 도메인 무관성
+            'business_logic_free': True,     # 비즈니스 로직 완전 제거
+            'technical_utility_only': True, # 순수 기술적 유틸리티만
+            'weight': 0.5
+        },
+        'stability': {
+            'api_frozen': True,              # API 고정 (하위 호환성)
+            'test_coverage': 0.95,           # 95% 이상 테스트 커버리지
+            'production_proven': True,       # 프로덕션 검증 완료
+            'weight': 0.3
+        },
+        'documentation': {
+            'complete_docs': True,           # 완전한 문서화
+            'usage_examples': True,          # 사용 예제 포함
+            'api_reference': True,           # API 레퍼런스 완성
+            'weight': 0.2
+        }
+    }
+}
+```
+
+### 승격 후보 자동 분석
+```python
+class CodePromotionAnalyzer:
+    """코드 승격 후보 분석 시스템"""
+    
+    def __init__(self, project_root: str):
+        self.project_root = Path(project_root)
+        self.criteria = PROMOTION_CRITERIA
+        
+    def analyze_domains_to_shared(self) -> List[Dict]:
+        """Domains → Shared 승격 후보 분석"""
+        candidates = []
+        
+        domains_path = Path('domains')
+        for domain_dir in domains_path.iterdir():
+            if not domain_dir.is_dir():
+                continue
+                
+            # 도메인 내 공통 기능 분석
+            common_functions = self._extract_common_functions(domain_dir)
+            
+            for func_info in common_functions:
+                score = self._calculate_promotion_score(
+                    func_info, 'domains_to_shared'
+                )
+                
+                if score >= 0.7:  # 70% 이상 점수
+                    candidates.append({
+                        'source_path': func_info['path'],
+                        'target_path': f'shared/{func_info["category"]}/{func_info["name"]}',
+                        'score': score,
+                        'justification': self._generate_justification(func_info, score)
+                    })
+        
+        return sorted(candidates, key=lambda x: x['score'], reverse=True)
+    
+    def analyze_shared_to_common(self) -> List[Dict]:
+        """Shared → Common 승격 후보 분석"""
+        candidates = []
+        
+        shared_path = Path('shared')
+        for module_dir in shared_path.iterdir():
+            if not module_dir.is_dir():
+                continue
+                
+            # 모듈 내 범용 기능 분석
+            universal_functions = self._extract_universal_functions(module_dir)
+            
+            for func_info in universal_functions:
+                score = self._calculate_promotion_score(
+                    func_info, 'shared_to_common'
+                )
+                
+                if score >= 0.8:  # 80% 이상 점수 (더 엄격)
+                    candidates.append({
+                        'source_path': func_info['path'],
+                        'target_path': f'common/{func_info["category"]}/{func_info["name"]}',
+                        'score': score,
+                        'justification': self._generate_justification(func_info, score)
+                    })
+        
+        return sorted(candidates, key=lambda x: x['score'], reverse=True)
+    
+    def _extract_common_functions(self, domain_path: Path) -> List[Dict]:
+        """도메인에서 공통 기능 추출"""
+        common_functions = []
+        
+        # 도메인 내 파일들을 스캔하여 재사용 가능한 함수 식별
+        for py_file in domain_path.rglob('*.py'):
+            if py_file.name.startswith('__'):
+                continue
+                
+            functions = self._analyze_file_functions(py_file)
+            
+            for func in functions:
+                # 다른 도메인에서도 사용될 가능성 분석
+                reusability_score = self._calculate_reusability(func)
+                
+                if reusability_score > 0.6:
+                    common_functions.append({
+                        'path': str(py_file),
+                        'name': func['name'],
+                        'category': self._categorize_function(func),
+                        'reusability_score': reusability_score,
+                        'domain_specificity': self._calculate_domain_specificity(func)
+                    })
+        
+        return common_functions
+    
+    def _extract_universal_functions(self, module_path: Path) -> List[Dict]:
+        """Shared 모듈에서 범용 기능 추출"""
+        universal_functions = []
+        
+        for py_file in module_path.rglob('*.py'):
+            if py_file.name.startswith('__'):
+                continue
+                
+            functions = self._analyze_file_functions(py_file)
+            
+            for func in functions:
+                # 완전한 도메인 독립성 분석
+                domain_independence = self._calculate_domain_independence(func)
+                
+                if domain_independence > 0.9:  # 90% 이상 도메인 독립적
+                    universal_functions.append({
+                        'path': str(py_file),
+                        'name': func['name'],
+                        'category': self._categorize_universal_function(func),
+                        'domain_independence': domain_independence,
+                        'technical_utility_score': self._calculate_technical_utility(func)
+                    })
+        
+        return universal_functions
+    
+    def _calculate_promotion_score(self, func_info: Dict, promotion_type: str) -> float:
+        """승격 점수 계산"""
+        criteria = self.criteria[promotion_type]
+        total_score = 0.0
+        
+        for criterion_name, criterion_config in criteria.items():
+            criterion_score = self._evaluate_criterion(func_info, criterion_config)
+            weighted_score = criterion_score * criterion_config['weight']
+            total_score += weighted_score
+        
+        return total_score
+    
+    def _categorize_function(self, func: Dict) -> str:
+        """함수를 카테고리별로 분류"""
+        name = func['name'].lower()
+        
+        if any(keyword in name for keyword in ['config', 'setting', 'option']):
+            return 'config'
+        elif any(keyword in name for keyword in ['log', 'debug', 'trace']):
+            return 'logging'
+        elif any(keyword in name for keyword in ['file', 'io', 'read', 'write']):
+            return 'file'
+        elif any(keyword in name for keyword in ['util', 'helper', 'tool']):
+            return 'utils'
+        elif any(keyword in name for keyword in ['valid', 'check', 'verify']):
+            return 'validation'
+        else:
+            return 'utils'  # 기본값
+    
+    def _categorize_universal_function(self, func: Dict) -> str:
+        """범용 함수를 Common 카테고리별로 분류"""
+        # 더 엄격한 분류 기준 적용
+        return self._categorize_function(func)
+```
+
+## 🚫 Common 폴더 금지 사항
+
+### 절대 포함하면 안 되는 것들
+```python
+COMMON_FOLDER_FORBIDDEN = {
+    'business_logic': [
+        '도메인별 비즈니스 규칙',
+        '업무 프로세스 로직',
+        '도메인 특화 알고리즘'
+    ],
+    'domain_specific': [
+        '얼굴인식 전용 기능',
+        '불량검출 전용 기능',
+        '특정 도메인 엔티티'
+    ],
+    'ai_models': [
+        '훈련된 모델 가중치',
+        '모델 아키텍처 정의',
+        '도메인별 추론 로직'
+    ],
+    'external_dependencies': [
+        '특정 하드웨어 의존 코드',
+        '특정 서비스 API 클라이언트',
+        '도메인별 외부 연동'
+    ]
+}
+
+# 올바른 위치
+CORRECT_LOCATIONS = {
+    'business_logic': 'domains/{domain_name}/core/',
+    'domain_specific': 'domains/{domain_name}/ 또는 shared/{category}/',
+    'ai_models': 'models/ 또는 domains/{domain_name}/infrastructure/models/',
+    'external_dependencies': 'domains/{domain_name}/infrastructure/ 또는 shared/{category}/'
+}
+```
+
+## 📋 Common 폴더 품질 기준
+
+### 코드 품질 요구사항
+```python
+COMMON_QUALITY_STANDARDS = {
+    'test_coverage': {
+        'minimum': 95,  # 95% 이상 필수
+        'target': 100,  # 100% 목표
+        'types': ['unit', 'integration', 'property']
+    },
+    'documentation': {
+        'docstring_coverage': 100,  # 100% 필수
+        'type_hints': 100,          # 100% 필수
+        'examples': True,           # 사용 예제 필수
+        'api_reference': True       # API 레퍼런스 필수
+    },
+    'code_style': {
+        'black_formatted': True,    # Black 포맷팅 필수
+        'isort_sorted': True,       # isort 정렬 필수
+        'flake8_compliant': True,   # Flake8 준수 필수
+        'mypy_typed': True          # MyPy 타입 체크 필수
+    },
+    'api_stability': {
+        'backward_compatible': True, # 하위 호환성 필수
+        'semantic_versioning': True, # 시맨틱 버저닝 필수
+        'deprecation_policy': True   # 폐기 정책 필수
+    }
+}
+```
+
+### 자동 품질 검사
+```python
+class CommonQualityChecker:
+    """Common 폴더 품질 자동 검사"""
+    
+    def __init__(self):
+        self.standards = COMMON_QUALITY_STANDARDS
+        
+    def check_all(self) -> Dict[str, bool]:
+        """전체 품질 검사"""
+        results = {}
+        
+        results['test_coverage'] = self._check_test_coverage()
+        results['documentation'] = self._check_documentation()
+        results['code_style'] = self._check_code_style()
+        results['api_stability'] = self._check_api_stability()
+        results['forbidden_content'] = self._check_forbidden_content()
+        
+        return results
+    
+    def _check_test_coverage(self) -> bool:
+        """테스트 커버리지 검사"""
+        # pytest-cov를 사용한 커버리지 측정
+        result = subprocess.run([
+            'pytest', '--cov=common', '--cov-report=json'
+        ], capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            with open('coverage.json', 'r') as f:
+                coverage_data = json.load(f)
+                total_coverage = coverage_data['totals']['percent_covered']
+                return total_coverage >= self.standards['test_coverage']['minimum']
+        
+        return False
+    
+    def _check_documentation(self) -> bool:
+        """문서화 품질 검사"""
+        # 모든 public 함수/클래스에 docstring 존재 여부 확인
+        common_path = Path('common')
+        
+        for py_file in common_path.rglob('*.py'):
+            if not self._check_file_documentation(py_file):
+                return False
+        
+        return True
+    
+    def _check_forbidden_content(self) -> bool:
+        """금지된 내용 포함 여부 검사"""
+        forbidden_keywords = [
+            'face_recognition', 'factory_defect', 'powerline_inspection',
+            'torch.nn', 'tensorflow', 'model.predict',
+            'business_rule', 'domain_logic'
+        ]
+        
+        common_path = Path('common')
+        
+        for py_file in common_path.rglob('*.py'):
+            with open(py_file, 'r', encoding='utf-8') as f:
+                content = f.read().lower()
+                
+                for keyword in forbidden_keywords:
+                    if keyword in content:
+                        logger.warning(f"Forbidden keyword '{keyword}' found in {py_file}")
+                        return False
+        
+        return True
+```
+
+## 📚 Common 모듈 사용 가이드라인
+
+### 올바른 사용 패턴
+```python
+# ✅ 올바른 사용 - 도메인 독립적 유틸리티
+from common.file.image_io import load_image, save_image
+from common.utils.path_utils import ensure_dir_exists
+from common.logging import get_logger
+
+def process_any_image(image_path: str, output_path: str):
+    """도메인에 관계없이 사용 가능한 이미지 처리"""
+    logger = get_logger(__name__)
+    
+    # 이미지 로딩 (포맷 무관)
+    image = load_image(image_path)
+    
+    # 출력 디렉토리 확인
+    ensure_dir_exists(output_path)
+    
+    # 처리된 이미지 저장
+    save_image(image, output_path)
+    logger.info(f"Image processed: {image_path} -> {output_path}")
+```
+
+### 잘못된 사용 패턴
+```python
+# ❌ 잘못된 사용 - 도메인 특화 로직
+from common.face.face_detector import detect_faces  # 금지!
+from common.business.quality_rules import check_defect  # 금지!
+
+# ❌ 이런 것들은 common에 있으면 안 됨
+def detect_faces_in_image(image):  # → shared/vision_core/detection/
+    pass
+
+def apply_business_rule(data):     # → domains/{domain}/core/
+    pass
+
+def load_face_model():             # → domains/face_recognition/infrastructure/
+    pass
+```
+
+## 🔄 마이그레이션 전략
+
+### 기존 코드를 Common으로 이동하는 절차
+```python
+MIGRATION_PROCESS = {
+    'step_1_analysis': {
+        'description': '승격 후보 자동 분석',
+        'tools': ['CodePromotionAnalyzer'],
+        'output': '승격 후보 리스트'
+    },
+    'step_2_review': {
+        'description': '아키텍처 팀 검토',
+        'criteria': PROMOTION_CRITERIA,
+        'approval_required': True
+    },
+    'step_3_refactoring': {
+        'description': '도메인 독립적으로 리팩토링',
+        'tasks': [
+            '비즈니스 로직 제거',
+            '도메인 특화 의존성 제거',
+            '범용 인터페이스 설계',
+            '완전한 테스트 작성'
+        ]
+    },
+    'step_4_migration': {
+        'description': '실제 파일 이동 및 import 수정',
+        'automation': True,
+        'validation': '자동 테스트 실행'
+    },
+    'step_5_cleanup': {
+        'description': '기존 위치 정리 및 문서 업데이트',
+        'tasks': [
+            '기존 파일 삭제',
+            'import 경로 업데이트',
+            '문서 업데이트',
+            'CHANGELOG 업데이트'
+        ]
+    }
+}
+```
+
+이 전략을 통해 **Common 폴더가 진정한 공통 기반 계층**으로서 역할을 수행하며, **도메인 독립적이고 재사용 가능한 고품질 유틸리티**만을 포함하도록 관리됩니다.
+
+

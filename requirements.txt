@@ -1,0 +1,37 @@
+# Vision System - Main Dependencies
+# 기본 설치용 (API 포함 모든 기능)
+
+# Computer Vision
+opencv-python==4.8.1.78
+numpy==1.24.3
+Pillow==10.0.1
+
+# Face Recognition & Preprocessing
+mediapipe==0.10.8          # 얼굴 랜드마크 및 정렬
+onnxruntime==1.16.3        # ONNX 모델 추론
+dlib==19.24.2              # 얼굴 랜드마크 (대안, 선택사항)
+
+# Web Framework (API)
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+
+# Data Processing
+PyYAML==6.0.1
+python-dotenv==1.0.0
+
+# Logging
+structlog==23.2.0
+python-json-logger==2.0.7
+
+# HTTP Requests
+requests==2.31.0
+
+# Performance & Monitoring
+psutil==5.9.6              # 시스템 리소스 모니터링
+prometheus-client==0.19.0  # 메트릭 수집
+
+# Development Tools (선택사항)
+pytest==7.4.3              # 테스트 프레임워크
+pytest-benchmark==4.0.0    # 성능 벤치마크 

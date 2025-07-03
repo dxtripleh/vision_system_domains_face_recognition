@@ -1,0 +1,436 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 기본 Python 개발 표준
+
+## 📝 파일 헤더 (모든 .py 파일 필수)
+
+```python
+# 기본 Python 개발 표준
+
+## 📝 파일 헤더 (모든 .py 파일 필수)
+
+```python
+# 기본 Python 개발 표준
+
+## 📝 파일 헤더 (모든 .py 파일 필수)
+
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+모듈 설명.
+
+이 모듈은 [기능 설명]을 제공합니다.
+
+Example:
+    기본적인 사용 예시를 여기에 작성합니다.
+    
+    $ python run_main_process.py --input data.csv
+"""
+
+import os
+import sys
+import logging
+from typing import Dict, List, Optional, Tuple, Union
+```
+
+## 📦 Import 순서 (실용적 규칙)
+
+### 기본 Import 순서
+```python
+# 1. 표준 라이브러리 (alphabetical order)
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+
+# 2. 서드파티 라이브러리 (alphabetical order)
+import cv2
+import numpy as np
+import torch
+import yaml
+
+# 3. 로컬 애플리케이션 (project imports)
+from common.logging import get_logger
+from common.config import load_config
+from shared.vision_core.detection import BaseDetector
+
+# 4. 상대 import (같은 폴더 내)
+from .utils import preprocess_data
+from .models import DataModel
+```
+
+### Import 그룹 구분자 사용
+```python
+# 표준 라이브러리
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+
+# 서드파티 라이브러리
+import cv2
+import numpy as np
+import torch
+import yaml
+
+# 프로젝트 모듈
+from common.logging import get_logger
+from common.config import load_config
+
+# 상대 import
+from .utils import preprocess_data
+```
+
+### 자동 정렬 도구 설정
+```python
+# .isort.cfg 또는 pyproject.toml 설정
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 88
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+known_first_party = ["common", "shared", "domains"]
+```
+
+## 🐍 Python 코딩 표준
+
+### Type Hints 사용
+```python
+def process_face_detection(
+    image: np.ndarray,
+    confidence_threshold: float = 0.5,
+    output_path: Optional[str] = None
+) -> Tuple[bool, List[Dict]]:
+    """얼굴 검출 처리 함수"""
+    pass
+```
+
+### Docstring 작성 (Google Style)
+```python
+def detect_faces(image: np.ndarray, config: Dict) -> List[Dict]:
+    """이미지에서 얼굴을 검출합니다.
+    
+    Args:
+        image: 입력 이미지 (numpy 배열)
+        config: 검출 설정 딕셔너리
+        
+    Returns:
+        검출된 얼굴 정보 리스트
+        
+    Raises:
+        ValueError: 입력 이미지가 유효하지 않은 경우
+        
+    Example:
+        >>> image = cv2.imread('face.jpg')
+        >>> config = {'confidence': 0.5}
+        >>> faces = detect_faces(image, config)
+    """
+    pass
+```
+
+### 로깅 사용
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+def safe_process():
+    """안전한 함수 실행 패턴"""
+    try:
+        # 메인 로직
+        result = process_data()
+        logger.info("Processing completed successfully")
+        return result
+    except Exception as e:
+        logger.error(f"Error in {__name__}: {str(e)}")
+        raise
+```
+
+## 📂 파일 네이밍 규칙
+
+### Python 파일 네이밍
+- **실행 파일**: `run_*.py` (예: `run_face_recognition.py`)
+- **테스트 파일**: `test_*.py` (예: `test_face_detection.py`)
+- **서비스 파일**: `*_service.py` (예: `face_detection_service.py`)
+- **모델 파일**: `*_model.py` (예: `retinaface_model.py`)
+
+### 변수 및 함수 네이밍
+- **변수/함수**: snake_case (예: `detect_faces`, `confidence_score`)
+- **클래스**: PascalCase (예: `FaceDetector`, `PersonRepository`)
+- **상수**: UPPER_SNAKE_CASE (예: `DEFAULT_CONFIDENCE`, `MAX_FACES`)
+
+## ⚠️ 금지 사항
+
+1. **절대 금지**: 하드코딩된 경로 사용
+   ```python
+   # ❌ 금지
+   image_path = "C:/Users/user/images/face.jpg"
+   
+   # ✅ 올바른 방법
+   image_path = config.get('image_path', 'data/images/face.jpg')
+   ```
+
+2. **절대 금지**: 예외 처리 없는 리소스 사용
+   ```python
+   # ❌ 금지
+   cap = cv2.VideoCapture(0)
+   frame = cap.read()
+   
+   # ✅ 올바른 방법
+   try:
+       cap = cv2.VideoCapture(0)
+       ret, frame = cap.read()
+       if not ret:
+           raise ValueError("Failed to read frame")
+   finally:
+       cap.release()
+   ```
+
+3. **절대 금지**: print() 문 사용 (로깅 사용)
+   ```python
+   # ❌ 금지
+   print(f"Face detected: {face_count}")
+   
+   # ✅ 올바른 방법
+   logger.info(f"Face detected: {face_count}")
+   ```
+
+## 🔧 코드 품질 도구 (선택적)
+
+### 기본 도구
+- **black**: 코드 포맷팅
+- **isort**: import 정렬
+- **flake8**: 기본 린팅
+
+### 사용법
+```bash
+# 코드 자동 포맷팅
+black .
+
+# import 문 정렬
+isort .
+
+# 코드 품질 검사
+flake8 .
+```
+
+---
+
+**적용 우선순위**: 
+1. 파일 헤더 + Docstring (필수)
+2. Type Hints (권장)
+3. 로깅 시스템 (필수)
+4. 코드 품질 도구 (선택적) 
+
+## ⚠️ 현실적 한계 및 적용 안내
+- **Import 순서**: isort를 사용하여 자동 정렬 권장 (수동 정렬도 허용)
+- **Type Hints**: 모든 함수에 필수이지만, 복잡한 타입은 선택적
+- **Docstring**: Google Style 필수이지만, 간단한 함수는 한 줄 설명 허용
+- **테스트**: pytest 사용 권장, 커버리지는 70% 이상 목표
+
+## 🧪 테스트 및 자동화 (기본)
+
+### pytest 기본 설정
+```python
+# tests/test_example.py
+import pytest
+from unittest.mock import Mock, patch
+
+def test_basic_function():
+    """기본 함수 테스트"""
+    result = process_data([{'id': 1}], {'mode': 'test'})
+    assert result[0] is True  # 성공 여부
+    assert 'success' in result[1]  # 메시지 확인
+
+@pytest.fixture
+def sample_data():
+    """테스트용 샘플 데이터"""
+    return [{'id': 1, 'value': 'test'}]
+
+def test_with_fixture(sample_data):
+    """픽스처를 사용한 테스트"""
+    result = process_data(sample_data, {})
+    assert result[0] is True
+```
+
+### 코드 품질 도구 설정
+```python
+# pyproject.toml에 추가
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+disallow_untyped_defs = true
+```
+
+### pre-commit 설정 (선택적)
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        language_version: python3
+  
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+  
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+```
+
+## 🚫 금지 사항
+```python
+# ❌ 금지: 한글 변수명
+사용자_이름 = "홍길동"  # 금지
+
+# ❌ 금지: 너무 짧은 변수명
+a = 1  # 금지
+x = "test"  # 금지
+
+# ❌ 금지: 매직 넘버
+if count > 10:  # 금지
+    pass
+
+# ✅ 권장: 상수 사용
+MAX_RETRY_COUNT = 10
+if count > MAX_RETRY_COUNT:
+    pass
+```
+
+## 🔧 실제 적용 예시
+
+### 데모 코드에서의 적용
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+실시간 얼굴인식 데모.
+
+웹캠을 통해 실시간으로 얼굴을 검출하고 인식하는 데모 시스템입니다.
+"""
+
+# 표준 라이브러리
+import argparse
+import time
+from pathlib import Path
+from typing import List, Optional
+
+# 서드파티 라이브러리
+import cv2
+import numpy as np
+
+# 프로젝트 모듈
+from common.logging import get_logger
+from domains.face_recognition.core.services import FaceDetectionService
+
+logger = get_logger(__name__)
+
+
+class FaceDetectionDemo:
+    """얼굴 검출 데모 클래스"""
+    
+    def __init__(self, camera_id: int = 0) -> None:
+        """데모 초기화.
+        
+        Args:
+            camera_id: 카메라 ID (기본값: 0)
+        """
+        self.camera_id = camera_id
+        self.detection_service = FaceDetectionService()
+        self.is_running = False
+    
+    def run(self) -> bool:
+        """데모 실행.
+        
+        Returns:
+            bool: 실행 성공 여부
+        """
+        try:
+            self.is_running = True
+            logger.info("Face detection demo started")
+            
+            # 메인 처리 루프
+            while self.is_running:
+                # 프레임 처리 로직
+                pass
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Demo error: {str(e)}")
+            return False
+        finally:
+            self.is_running = False
+            logger.info("Face detection demo finished")
+
+
+def main() -> int:
+    """메인 함수.
+    
+    Returns:
+        int: 종료 코드 (0: 성공, 1: 실패)
+    """
+    parser = argparse.ArgumentParser(description="얼굴 검출 데모")
+    parser.add_argument("--camera", type=int, default=0, help="카메라 ID")
+    args = parser.parse_args()
+    
+    demo = FaceDetectionDemo(camera_id=args.camera)
+    success = demo.run()
+    
+    return 0 if success else 1
+
+
+if __name__ == "__main__":
+    exit(main())
+```
+
+## 📋 Python 표준 체크리스트
+
+### 필수 준수 항목
+- [ ] 파일 헤더 (shebang, encoding, docstring)
+- [ ] Import 순서 (표준 → 서드파티 → 프로젝트 → 상대)
+- [ ] Type Hints (모든 함수 매개변수, 반환값)
+- [ ] Docstring (Google Style)
+- [ ] 변수/함수 네이밍 (snake_case)
+- [ ] 클래스 네이밍 (PascalCase)
+- [ ] 상수 네이밍 (UPPER_SNAKE_CASE)
+- [ ] 예외 처리 및 로깅
+
+### 권장 준수 항목
+- [ ] pytest 테스트 작성
+- [ ] black 코드 포맷팅
+- [ ] isort import 정렬
+- [ ] flake8 린팅
+- [ ] mypy 타입 체킹
+
+### 선택적 준수 항목
+- [ ] pre-commit 훅 설정
+- [ ] 테스트 커버리지 80% 이상
+- [ ] 복잡한 타입 힌트 (Union, Generic 등)
+- [ ] 고급 예외 처리 (커스텀 예외 클래스) 

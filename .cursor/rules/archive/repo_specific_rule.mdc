@@ -1,0 +1,335 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Vision System Development Rules
+
+이 프로젝트는 얼굴인식을 시작으로 확장 가능한 비전 시스템을 구축하는 프로젝트입니다.
+
+## 🎯 **현재 개발 상황 (Phase 1)**
+- **현재 단계**: 얼굴인식 도메인 실제 AI 모델 통합
+- **다음 목표**: 실시간 처리 파이프라인 완성
+- **적용 범위**: 모든 개발 작업에 필수 적용
+
+## 🏗️ 프로젝트 구조
+
+### 확장 가능한 구조 (Phase 1: 얼굴인식 중심)
+```
+vision_system/
+├── domains/                   # 도메인별 독립 개발
+│   └── face_recognition/      # 현재 개발 중인 얼굴인식 도메인
+├── shared/                    # 공통 모듈 (점진적 확장)
+│   ├── vision_core/           # 비전 알고리즘 공통 모듈
+│   └── security/              # 보안 모듈 (GDPR 준수)
+├── datasets/                  # 🎯 학습 전용 데이터 (ML 데이터셋)
+│   └── face_recognition/      # 얼굴인식 학습 데이터
+│       ├── raw/               # 원본 이미지
+│       ├── processed/         # 전처리된 이미지
+│       ├── annotations/       # 라벨링 데이터
+│       └── splits/            # train/val/test 분할
+├── models/                    # 모델 저장소
+│   ├── weights/               # 모델 가중치
+│   ├── metadata/              # 모델 메타데이터
+│   └── configs/               # 모델 설정
+├── data/                      # 🎯 런타임 전용 데이터 (간단하게)
+│   ├── temp/                  # 임시 파일
+│   ├── logs/                  # 로그 파일
+│   └── output/                # 결과물 저장
+├── common/                    # 범용 유틸리티
+├── config/                    # 전역 설정 관리
+└── scripts/                   # 유틸리티 스크립트
+```
+
+## ⚠️ **중요한 파일 관리 규칙**
+
+### **🚫 절대 금지 사항**
+```python
+# ❌ 절대 금지: 루트 디렉토리에 임시 파일, 로그 파일 생성
+FORBIDDEN_ROOT_FILES = [
+    "*.log",           # 로그 파일 → data/logs/ 에 저장
+    "*.tmp",           # 임시 파일 → data/temp/ 에 저장
+    "output_*",        # 결과물 → data/output/ 에 저장
+    "temp_*",          # 임시 파일 → data/temp/ 에 저장
+    "cache_*",         # 캐시 파일 → data/temp/ 에 저장
+    "debug_*",         # 디버그 파일 → data/logs/ 에 저장
+    "result_*",        # 결과 파일 → data/output/ 에 저장
+    "face_*.jpg",      # 처리된 이미지 → data/output/ 에 저장
+]
+
+# ✅ 올바른 파일 저장 위치
+CORRECT_FILE_LOCATIONS = {
+    'logs': 'data/logs/',           # 모든 로그 파일
+    'temp': 'data/temp/',           # 모든 임시 파일
+    'output': 'data/output/',       # 모든 결과물
+    'models': 'models/weights/',    # 모델 가중치
+    'datasets': 'datasets/{domain}/', # 학습 데이터
+    'config': 'config/',            # 설정 파일
+}
+```
+
+### **📂 데이터 폴더 구분 원칙**
+```python
+# 🎯 datasets/ = 학습 전용 (ML 데이터셋)
+DATASETS_PURPOSE = {
+    'raw/': '원본 학습 이미지/비디오',
+    'processed/': '전처리된 학습 데이터',
+    'annotations/': '라벨링 데이터 (YOLO, COCO, JSON)',
+    'splits/': 'train/validation/test 분할 정보'
+}
+
+# 🎯 data/ = 런타임 전용 (실행 중 생성되는 데이터)
+DATA_PURPOSE = {
+    'temp/': '임시 파일 (자동 정리)',
+    'logs/': '시스템 로그, 에러 로그',
+    'output/': '추론 결과, 처리 결과물'
+}
+```
+
+## 🎯 개발 원칙
+
+### 도메인 독립성
+- 각 도메인(face_recognition, factory_defect, powerline_inspection)은 완전히 독립적
+- 도메인 간 직접적인 의존성 없음
+- 공통 기능은 shared/ 폴더를 통해 공유
+
+### 계층별 의존성 규칙
+1. **domains/** → **shared/**, **common/** (하위 계층만 참조)
+2. **shared/** → **common/** (하위 계층만 참조)
+3. **common/** → 외부 라이브러리만 참조
+
+### 파일 및 폴더 네이밍
+- Python 파일: snake_case
+- 클래스: PascalCase
+- 함수/변수: snake_case
+- 상수: UPPER_SNAKE_CASE
+
+## 🚫 금지 사항
+
+### **🚫 최상위 루트 보호 규칙 (강화)**
+```python
+# ❌ 절대 금지: 루트 디렉토리에 생성 금지 파일들
+FORBIDDEN_ROOT_FILES = [
+    "*.log",           # 로그 파일 → data/logs/ 에 저장
+    "*.tmp",           # 임시 파일 → data/temp/ 에 저장
+    "output_*",        # 결과물 → data/output/ 에 저장
+    "temp_*",          # 임시 파일 → data/temp/ 에 저장
+    "cache_*",         # 캐시 파일 → data/temp/ 에 저장
+    "debug_*",         # 디버그 파일 → data/logs/ 에 저장
+    "result_*",        # 결과 파일 → data/output/ 에 저장
+    "face_*.jpg",      # 처리된 이미지 → data/output/ 에 저장
+    "run_*.py",        # 실행 스크립트 → scripts/{domain}/ 에 저장
+    "test_*.py",       # 테스트 파일 → domains/{domain}/tests/ 에 저장
+    "*_api.py",        # API 파일 → domains/{domain}/interfaces/api/ 에 저장
+    "*_cli.py",        # CLI 파일 → domains/{domain}/interfaces/cli/ 에 저장
+    "model_*.py",      # 모델 파일 → domains/{domain}/infrastructure/models/ 에 저장
+    "config_*.py",     # 설정 파일 → config/ 또는 domains/{domain}/config/ 에 저장
+]
+
+# ✅ 최상위 루트에 허용되는 파일들 (화이트리스트)
+ALLOWED_ROOT_FILES = [
+    "README.md",       # 프로젝트 개요
+    "requirements.txt", # 메인 의존성
+    ".gitignore",      # Git 설정
+    ".env.example",    # 환경변수 예시
+    "LICENSE",         # 라이선스
+    "CHANGELOG.md",    # 프로젝트 전체 변경 이력
+    "CONTRIBUTING.md", # 기여 가이드
+]
+
+# ✅ 올바른 파일 저장 위치 매핑
+CORRECT_FILE_LOCATIONS = {
+    'logs': 'data/logs/',                    # 모든 로그 파일
+    'temp': 'data/temp/',                    # 모든 임시 파일
+    'output': 'data/output/',                # 모든 결과물
+    'models': 'models/weights/',             # 모델 가중치
+    'datasets': 'datasets/{domain}/',        # 학습 데이터
+    'config': 'config/',                     # 전역 설정 파일
+    'domain_config': 'domains/{domain}/config/', # 도메인별 설정
+    'scripts': 'scripts/{domain}/',          # 도메인별 스크립트
+    'tests': 'domains/{domain}/tests/',      # 도메인별 테스트
+    'api': 'domains/{domain}/interfaces/api/', # API 인터페이스
+    'cli': 'domains/{domain}/interfaces/cli/', # CLI 인터페이스
+    'domain_models': 'domains/{domain}/infrastructure/models/', # 도메인 모델
+}
+```
+
+### **기존 금지 사항**
+1. **절대 금지**: 루트 디렉토리에 임시 파일, 로그 파일, 실행 스크립트 생성
+2. **절대 금지**: domains 간 직접 import
+3. **절대 금지**: 하드코딩된 경로 사용
+4. **절대 금지**: Type hints 없는 public 함수
+5. **절대 금지**: Docstring 없는 public 함수/클래스
+6. **절대 금지**: 순환 import
+7. **절대 금지**: 파일명 중복 (같은 기능의 파일이 여러 위치에 존재)
+8. **절대 금지**: "편의용" 래퍼 스크립트 생성
+
+## 📝 코딩 표준
+
+### 파일 헤더 (모든 .py 파일 필수)
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+모듈 설명.
+
+이 모듈은 [기능 설명]을 제공합니다.
+"""
+
+import os
+import sys
+from typing import Dict, List, Optional, Tuple, Union
+```
+
+### Type Hints 필수
+```python
+def process_image(
+    image: np.ndarray,
+    config: Dict[str, Any],
+    output_path: Optional[str] = None
+) -> Tuple[bool, str]:
+    """이미지 처리 함수"""
+    pass
+```
+
+### Docstring 필수 (Google Style)
+```python
+def detect_faces(image: np.ndarray) -> List[Dict[str, Any]]:
+    """이미지에서 얼굴을 검출합니다.
+    
+    Args:
+        image: 입력 이미지 (BGR 형식)
+        
+    Returns:
+        검출된 얼굴 정보 리스트
+        
+    Example:
+        >>> image = cv2.imread('face.jpg')
+        >>> faces = detect_faces(image)
+    """
+    pass
+```
+
+## 🔧 개발 도구
+
+### 필수 도구
+- black: 코드 포맷팅
+- isort: import 정렬
+- flake8: 린팅
+- mypy: 타입 체킹
+- pytest: 테스트
+
+### Git 훅
+- pre-commit: 코드 스타일 검사
+- commit-msg: 커밋 메시지 검증
+
+## 📊 데이터 관리
+
+### 학습 데이터 (datasets/)
+- 원본 데이터는 raw/ 폴더에 보관
+- 전처리된 데이터는 processed/ 폴더에 저장
+- 라벨링 데이터는 annotations/ 폴더에 저장
+- train/val/test 분할은 splits/ 폴더에 저장
+
+### 런타임 데이터 (data/)
+- 임시 파일은 temp/ 폴더에 저장 (자동 정리)
+- 로그는 logs/ 폴더에 저장
+- 결과물은 output/ 폴더에 저장
+
+## 🧪 테스트
+
+### 테스트 구조
+- 단위 테스트: tests/unit/
+- 통합 테스트: tests/integration/
+- E2E 테스트: tests/e2e/
+
+### 테스트 커버리지
+- 최소 80% 이상 유지
+- public 함수/클래스는 100% 테스트
+
+## 🔒 보안
+
+### 개인정보 보호
+- 얼굴 데이터는 GDPR 준수
+- 민감 정보 자동 마스킹
+- 데이터 보존 정책 적용
+
+### 암호화
+- 모델 파일 암호화
+- 통신 데이터 암호화
+- 저장 데이터 암호화
+
+## 📋 **자동 문서화 규칙**
+
+### 필수 문서 생성 규칙
+새로운 도메인이나 모듈 생성 시 다음 문서들이 자동으로 생성되어야 합니다:
+
+#### 도메인 레벨 문서 (domains/{domain_name}/)
+- **README.md** (필수) - 도메인 전체 개요, 사용법, API 참조
+- **STRUCTURE.md** (선택) - 상세한 내부 구조 설명
+- **CHANGELOG.md** (선택) - 주요 변경 이력
+- **DEVELOPMENT.md** (선택) - 개발자 가이드
+
+#### 서브모듈 레벨 문서 (core/, infrastructure/, interfaces/)
+- **README.md** (필수) - 해당 모듈의 역할과 사용법
+
+#### 공통 모듈 레벨 문서 (shared/)
+- **README.md** (필수) - 공통 모듈 설명 및 사용법
+
+### 문서 템플릿 시스템
+```python
+DOCUMENT_TEMPLATES = {
+    'domain_readme': {
+        'sections': [
+            '개요', '설치/설정', '빠른 시작', '사용법', 
+            'API 참조', '예제', '제한사항', '문제해결', 
+            '기여 가이드', '라이선스'
+        ],
+        'auto_variables': ['domain_name', 'description', 'version']
+    },
+    'module_readme': {
+        'sections': [
+            '모듈 개요', '주요 기능', '사용법', 
+            '예제', 'API 참조'
+        ],
+        'auto_variables': ['module_name', 'purpose', 'dependencies']
+    }
+}
+```
+
+### 자동 생성 트리거
+- 새 도메인 생성 시: 즉시 생성
+- 새 모듈 생성 시: 즉시 생성
+- 주요 코드 변경 시: 업데이트 알림
+- API 변경 시: 자동 업데이트
+
+### 문서 품질 보증
+```python
+DOCUMENTATION_QUALITY_CHECKS = {
+    'completeness': {
+        'required_sections': 0.9,  # 90% 이상 필수 섹션 완성
+        'min_content_length': 100  # 각 섹션 최소 100자
+    },
+    'consistency': {
+        'naming_convention': True,  # 네이밍 규칙 일관성
+        'format_consistency': True, # 포맷 일관성
+        'cross_references': True    # 상호 참조 정확성
+    },
+    'accessibility': {
+        'navigation_links': True,   # 네비게이션 링크
+        'search_keywords': True,    # 검색 키워드
+        'examples_included': True   # 사용 예제 포함
+    }
+}
+```
+
+### 실행 시점 정의
+- **즉시 생성**: 새 도메인/모듈 생성 시
+- **정기 업데이트**: 주간 스캔으로 누락된 문서 확인
+- **트리거 업데이트**: 커밋/PR/릴리즈 전 자동 업데이트
+
+이 규칙을 통해 앞으로 새로운 도메인(factory_defect, powerline_inspection)을 생성할 때 일관되고 완성도 높은 문서가 자동으로 생성됩니다.
+
+
+
+

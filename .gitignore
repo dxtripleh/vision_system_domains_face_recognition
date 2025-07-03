@@ -1,0 +1,173 @@
+# Vision System .gitignore
+# Git 버전 관리에서 제외할 파일들만 지정 (파일 생성 방지가 아님)
+
+# ==============================================================================
+# Python
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================================================================
+# IDE & Editors
+# ==============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
+
+# ==============================================================================
+# Operating System
+# ==============================================================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Linux
+*~
+
+# ==============================================================================
+# Vision System Specific
+# ==============================================================================
+
+# 런타임 생성 데이터 (data/ 폴더 내에서만 허용)
+data/temp/*
+data/logs/*
+data/output/*
+!data/temp/.gitkeep
+!data/logs/.gitkeep
+!data/output/.gitkeep
+
+# 대용량 모델 파일들 (models/weights/ 에서 선택적 추적)
+models/weights/*.onnx
+models/weights/*.pt
+models/weights/*.pth
+models/weights/*.h5
+models/weights/*.pb
+models/weights/*.tflite
+models/weights/*.bin
+# 단, 메타데이터는 추적
+!models/metadata/
+
+# 개발 중 생성되는 임시 결과물
+*.log
+*.tmp
+*.temp
+*_backup.*
+*_old.*
+
+# 개인 설정 파일
+config/local_*.yaml
+config/personal_*.yaml
+.env.local
+.env.*.local
+
+# 테스트 및 실험 데이터
+experiments/
+playground/
+notebooks/.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# 대용량 데이터셋 (선택적으로 LFS 사용)
+datasets/*/raw/*
+datasets/*/processed/*
+!datasets/**/README.md
+!datasets/**/metadata/
+
+# 성능 프로파일링 결과
+*.prof
+profiling_results/
+
+# Docker 관련
+.dockerignore
+
+# ==============================================================================
+# 보안 민감 파일
+# ==============================================================================
+*.key
+*.pem
+*.p12
+*.jks
+secrets.yaml
+credentials.json
+.env.production
+.env.staging
+
+# ==============================================================================
+# 버전 관리 대상 예외 (명시적 추적)
+# ==============================================================================
+# 프로젝트 루트의 중요 파일들은 추적
+!README.md
+!requirements.txt
+!.gitignore
+!LICENSE
+!pyproject.toml
+!setup.py
+
+# 설정 템플릿은 추적
+!config/*_template.yaml
+!config/default_*.yaml
+
+# 문서는 추적
+!docs/
+!*/README.md
+!*/STRUCTURE.md
+!*/CHANGELOG.md 

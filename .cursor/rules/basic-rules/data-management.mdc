@@ -1,0 +1,284 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 기본 데이터 관리 규칙
+
+## ⚠️ 현실적 한계 및 적용 안내
+- **자동 정리 시스템**: 기본 구현은 제공되지만, 실제 운영에서는 cron job이나 스케줄러 설정 필요
+- **메타데이터 저장**: JSON 형태로 저장되며, 실제 DB 연동은 별도 구현 필요
+- **보존 정책**: 기본값은 24시간(임시), 30일(로그)이며, 프로젝트 요구사항에 따라 조정 가능
+
+## 📂 데이터 폴더 구조
+
+### 기본 데이터 저장 위치 (실제 프로젝트 구조와 일치)
+```
+data/
+├── temp/                 # 임시 파일 (자동 정리, 24시간 보관)
+├── logs/                 # 로그 파일 (30일 보관)
+├── output/               # 결과물 저장
+└── domains/              # 도메인별 데이터
+    └── face_recognition/ # 얼굴인식 도메인 데이터
+        ├── detected_faces/
+        ├── processed/
+        └── raw_input/
+```
+
+### datasets/ vs data/ 구분 원칙
+```python
+# datasets/ = 학습 전용 (고정 데이터)
+DATASETS_PURPOSE = {
+    'raw/': '원본 학습 데이터 (이미지, 비디오)',
+    'processed/': '전처리된 학습 데이터',
+    'annotations/': '라벨링 데이터 (JSON, CSV)',
+    'splits/': 'train/validation/test 분할 정보'
+}
+
+# data/ = 런타임 전용 (동적 데이터)
+DATA_PURPOSE = {
+    'temp/': '임시 파일 (24시간 자동 정리)',
+    'logs/': '시스템 로그 (30일 보관)',
+    'output/': '처리 결과물',
+    'domains/': '도메인별 처리 데이터'
+}
+```
+
+## 📝 파일 네이밍 규칙
+
+### 기본 파일 네이밍 패턴
+```python
+FILE_NAMING_PATTERNS = {
+    'logs': 'data/logs/{component}_{date}.log',
+    'temp': 'data/temp/temp_{purpose}_{timestamp}.{ext}',
+    'output': 'data/output/{purpose}_{date}.{ext}',
+    'captured': 'data/domains/face_recognition/raw_input/captured/captured_frame_{timestamp}.{ext}',
+    'detected': 'data/domains/face_recognition/detected_faces/{source}/face_{timestamp}_{confidence}.{ext}'
+}
+
+# 예시
+EXAMPLES = {
+    'log_file': 'data/logs/face_recognition_20250702.log',
+    'temp_image': 'data/temp/temp_aligned_20250702_143022.jpg',
+    'captured_frame': 'data/domains/face_recognition/raw_input/captured/captured_frame_20250702_143022.jpg',
+    'detected_face': 'data/domains/face_recognition/detected_faces/auto_collected/face_20250702_143022_conf0.95.jpg'
+}
+```
+
+### 타임스탬프 형식
+```python
+import datetime
+
+def generate_timestamp() -> str:
+    """표준 타임스탬프 생성"""
+    return datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]  # 밀리초 포함
+
+def generate_date() -> str:
+    """날짜 형식 생성"""
+    return datetime.now().strftime('%Y%m%d')
+
+# 사용 예시
+timestamp = generate_timestamp()  # '20250702_143022_123'
+date = generate_date()           # '20250702'
+```
+
+## 🗂️ 데이터 저장 함수
+
+### 표준 파일 저장 함수
+```python
+import os
+import json
+import cv2
+from pathlib import Path
+
+def save_image_with_metadata(
+    image: np.ndarray,
+    metadata: Dict,
+    base_path: str,
+    filename_prefix: str
+) -> Tuple[str, str]:
+    """이미지와 메타데이터를 함께 저장"""
+    
+    # 폴더 생성
+    Path(base_path).mkdir(parents=True, exist_ok=True)
+    
+    # 파일명 생성
+    timestamp = generate_timestamp()
+    image_filename = f"{filename_prefix}_{timestamp}.jpg"
+    metadata_filename = f"{filename_prefix}_{timestamp}.json"
+    
+    # 전체 경로
+    image_path = os.path.join(base_path, image_filename)
+    metadata_path = os.path.join(base_path, metadata_filename)
+    
+    # 이미지 저장
+    cv2.imwrite(image_path, image)
+    
+    # 메타데이터 저장
+    metadata['timestamp'] = timestamp
+    metadata['image_path'] = image_path
+    
+    with open(metadata_path, 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+    
+    return image_path, metadata_path
+```
+
+### 캡처된 프레임 저장
+```python
+def save_captured_frame(frame: np.ndarray, source_info: Dict) -> str:
+    """캡처된 프레임 저장"""
+    base_path = "data/domains/face_recognition/raw_input/captured"
+    
+    metadata = {
+        'source': source_info.get('source', 'unknown'),
+        'resolution': f"{frame.shape[1]}x{frame.shape[0]}",
+        'channels': frame.shape[2] if len(frame.shape) > 2 else 1,
+        'capture_method': source_info.get('method', 'manual')
+    }
+    
+    image_path, metadata_path = save_image_with_metadata(
+        frame, metadata, base_path, "captured_frame"
+    )
+    
+    return image_path
+```
+
+### 검출된 얼굴 저장
+```python
+def save_detected_face(
+    face_image: np.ndarray,
+    detection_info: Dict,
+    source: str = "auto_collected"
+) -> str:
+    """검출된 얼굴 저장"""
+    base_path = f"data/domains/face_recognition/detected_faces/{source}"
+    
+    confidence = detection_info.get('confidence', 0.0)
+    filename_prefix = f"face_conf{confidence:.2f}"
+    
+    metadata = {
+        'confidence': confidence,
+        'bbox': detection_info.get('bbox', []),
+        'landmarks': detection_info.get('landmarks', []),
+        'quality_score': detection_info.get('quality_score', 0.0),
+        'source': source
+    }
+    
+    image_path, metadata_path = save_image_with_metadata(
+        face_image, metadata, base_path, filename_prefix
+    )
+    
+    return image_path
+```
+
+## 🧹 임시 데이터 관리
+
+### 자동 정리 규칙
+```python
+import time
+import os
+from pathlib import Path
+
+class TempDataCleaner:
+    """임시 데이터 자동 정리"""
+    
+    def __init__(self, temp_dir: str = "data/temp"):
+        self.temp_dir = Path(temp_dir)
+        self.max_age_hours = 24  # 24시간 이상 된 파일 삭제
+        self.max_size_mb = 500   # 500MB 이상 시 정리
+    
+    def cleanup_old_files(self):
+        """오래된 임시 파일 정리"""
+        if not self.temp_dir.exists():
+            return
+        
+        current_time = time.time()
+        max_age_seconds = self.max_age_hours * 3600
+        deleted_count = 0
+        
+        for file_path in self.temp_dir.rglob("*"):
+            if file_path.is_file():
+                file_age = current_time - file_path.stat().st_mtime
+                if file_age > max_age_seconds:
+                    try:
+                        file_path.unlink()
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to delete {file_path}: {e}")
+        
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} old temporary files")
+```
+
+## 🔧 실제 적용 예시
+
+### 데모에서 데이터 저장 사용
+```python
+def run_demo_with_data_saving():
+    """데이터 저장과 함께 데모 실행"""
+    temp_cleaner = TempDataCleaner()
+    
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # 얼굴 검출
+            detection_result = detection_service.detect_faces(frame)
+            
+            # 검출된 얼굴 저장
+            for face in detection_result.faces:
+                face_image = extract_face_region(frame, face.bbox)
+                save_detected_face(
+                    face_image, 
+                    {
+                        'confidence': face.confidence.value,
+                        'bbox': [face.bbox.x, face.bbox.y, face.bbox.width, face.bbox.height]
+                    },
+                    source="demo_capture"
+                )
+            
+            # 프레임 저장 (선택적)
+            if save_frame_requested:
+                save_captured_frame(frame, {'source': 'demo', 'method': 'manual'})
+                
+    finally:
+        # 임시 파일 정리
+        temp_cleaner.cleanup_old_files()
+```
+
+## 📋 데이터 관리 체크리스트
+
+### 필수 구현 항목
+- [ ] 데이터 폴더 구조 생성
+- [ ] 파일 네이밍 규칙 적용
+- [ ] 메타데이터 저장 함수 구현
+- [ ] 임시 파일 자동 정리 시스템
+
+### 권장 구현 항목
+- [ ] 데이터 품질 검증
+- [ ] 백업 시스템
+- [ ] 데이터 압축
+- [ ] 접근 권한 관리
+
+### 선택적 구현 항목
+- [ ] 데이터베이스 연동
+- [ ] 클라우드 저장소 연동
+- [ ] 데이터 버전 관리
+- [ ] 자동 백업 스케줄링
+
+---
+
+**적용 우선순위**:
+1. 파일 저장 위치 준수 (필수)
+2. 파일 네이밍 규칙 (필수)
+3. 메타데이터 저장 (권장)
+4. 자동 정리 시스템 (선택적)
+
+
+
+
+
+

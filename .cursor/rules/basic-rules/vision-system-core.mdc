@@ -1,0 +1,347 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 비전 시스템 핵심 규칙 (Basic)
+
+## 🎯 비전 시스템 특화 네이밍
+
+### 모델 가중치 파일 네이밍
+**패턴**: `{task}_{architecture}_{dataset}_{date}.{ext}`
+
+```python
+# 지원 태스크 (현재 단계)
+SUPPORTED_TASKS = [
+    'face_detection',     # 얼굴 감지
+    'face_recognition',   # 얼굴 인식
+    'emotion',           # 감정 인식 (향후)
+    'landmark'           # 랜드마크 추출 (향후)
+]
+
+# 예시
+EXAMPLES = [
+    'face_detection_retinaface_widerface_20250628.pt',
+    'face_recognition_arcface_glint360k_20250628.onnx',
+    'emotion_resnet50_fer_20250628.onnx'
+]
+```
+
+### 도메인 파일 네이밍
+```python
+# Core 계층
+face.py                      # 엔티티
+person.py                    # 엔티티
+face_detection_service.py    # 서비스
+
+# Infrastructure 계층
+retinaface_model.py         # AI 모델
+arcface_model.py            # AI 모델
+file_storage.py             # 저장소
+
+# Interfaces 계층
+face_recognition_api.py     # REST API
+run_face_recognition.py     # 실행 스크립트
+```
+
+## 🖥️ 카메라 시스템 기본 규칙
+
+### 표준 카메라 연결
+```python
+def connect_camera(camera_id: int = 0) -> cv2.VideoCapture:
+    """표준 카메라 연결 함수"""
+    cap = cv2.VideoCapture(camera_id)
+    
+    if not cap.isOpened():
+        raise RuntimeError(f"Camera {camera_id} connection failed")
+    
+    # 기본 해상도 설정
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    
+    return cap
+```
+
+### 리소스 해제 규칙
+```python
+def safe_camera_usage():
+    """안전한 카메라 사용 패턴"""
+    cap = None
+    try:
+        cap = cv2.VideoCapture(0)
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # 프레임 처리
+            process_frame(frame)
+            
+            # 종료 조건 확인
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+                
+    finally:
+        # 반드시 리소스 해제
+        if cap is not None:
+            cap.release()
+        cv2.destroyAllWindows()
+```
+
+## 🎮 키보드 입력 처리 (표준)
+
+### 기본 키보드 단축키
+```python
+def handle_keyboard_input() -> str:
+    """표준 키보드 단축키 처리"""
+    key = cv2.waitKey(1) & 0xFF
+    
+    if key == ord('q'):      # q: 종료
+        return 'quit'
+    elif key == ord('s'):    # s: 현재 프레임 저장
+        return 'save_frame'
+    elif key == ord('r'):    # r: 녹화 시작/중지
+        return 'toggle_record'
+    elif key == ord('p'):    # p: 일시 정지/재생
+        return 'toggle_pause'
+    elif key == ord('h'):    # h: 도움말 표시
+        return 'show_help'
+    elif key == ord('c'):    # c: 얼굴 캡처 (face_recognition 전용)
+        return 'capture_face'
+    
+    return None
+```
+
+## 🤖 모델 관리 기본 규칙
+
+### 하드웨어 감지 및 모델 선택
+```python
+def select_optimal_model() -> Dict:
+    """하드웨어 환경에 따른 최적 모델 선택"""
+    import torch
+    
+    if torch.cuda.is_available():
+        # GPU 환경
+        return {
+            'device': 'cuda',
+            'model_type': 'retinaface_resnet50',
+            'batch_size': 4,
+            'precision': 'fp16'
+        }
+    else:
+        # CPU 환경  
+        return {
+            'device': 'cpu',
+            'model_type': 'retinaface_mobilenet',
+            'batch_size': 1,
+            'precision': 'fp32'
+        }
+```
+
+### 모델 로딩 표준
+```python
+def load_detection_model(model_path: str, device: str = 'cpu'):
+    """표준 모델 로딩 함수"""
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+    
+    try:
+        # 모델 로딩 (PyTorch 예시)
+        model = torch.load(model_path, map_location=device)
+        model.eval()
+        
+        logger.info(f"Model loaded successfully: {model_path}")
+        return model
+        
+    except Exception as e:
+        logger.error(f"Failed to load model {model_path}: {str(e)}")
+        raise
+```
+
+## 📊 기본 성능 측정
+
+### FPS 측정
+```python
+class FPSCounter:
+    """간단한 FPS 측정기"""
+    
+    def __init__(self):
+        self.frame_count = 0
+        self.start_time = time.time()
+        self.fps = 0.0
+    
+    def tick(self) -> float:
+        """FPS 계산 및 반환"""
+        self.frame_count += 1
+        elapsed = time.time() - self.start_time
+        
+        if elapsed > 1.0:  # 1초마다 업데이트
+            self.fps = self.frame_count / elapsed
+            self.frame_count = 0
+            self.start_time = time.time()
+        
+        return self.fps
+```
+
+### 기본 로깅
+```python
+def setup_basic_logging():
+    """기본 로깅 설정"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('data/runtime/logs/vision_system.log'),
+            logging.StreamHandler()
+        ]
+    )
+```
+
+## 🔧 하드웨어 연결 검증
+
+### 시뮬레이션 방지 규칙
+```python
+def verify_hardware_connection():
+    """하드웨어 연결 상태 확인 (시뮬레이션 방지)"""
+    
+    # 환경 변수 확인
+    if os.environ.get("USE_SIMULATION", "False").lower() == "true":
+        raise RuntimeError("시뮬레이션 모드는 금지되어 있습니다.")
+    
+    # 카메라 연결 확인
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        raise RuntimeError("카메라 연결 실패. 하드웨어를 확인하세요.")
+    
+    # 테스트 프레임 읽기
+    ret, frame = cap.read()
+    cap.release()
+    
+    if not ret or frame is None:
+        raise RuntimeError("카메라에서 프레임을 읽을 수 없습니다.")
+    
+    # 가짜 데이터 감지
+    if frame.shape == (480, 640, 3) and np.all(frame == 0):
+        raise RuntimeError("가짜 데이터가 감지되었습니다.")
+    
+    return True
+```
+
+## 🚫 비전 시스템 금지 사항
+
+### 1. 하드웨어 관련
+```python
+# ❌ 절대 금지
+USE_SIMULATION = True
+frame = np.zeros((480, 640, 3))  # 가짜 프레임
+cap = MockCamera()               # 가짜 카메라
+
+# ✅ 올바른 방법
+cap = cv2.VideoCapture(0)        # 실제 카메라
+verify_hardware_connection()     # 하드웨어 검증
+```
+
+### 2. 리소스 관리
+```python
+# ❌ 절대 금지
+cap = cv2.VideoCapture(0)
+# ... 코드 ...
+# cap.release() 누락
+
+# ✅ 올바른 방법
+try:
+    cap = cv2.VideoCapture(0)
+    # ... 코드 ...
+finally:
+    cap.release()
+    cv2.destroyAllWindows()
+```
+
+### 3. 파일 저장 위치
+```python
+# ❌ 절대 금지
+cv2.imwrite("captured_frame.jpg", frame)  # 루트에 저장
+
+# ✅ 올바른 방법
+cv2.imwrite("data/runtime/output/captured_frame.jpg", frame)
+```
+
+## 📋 실행 스크립트 템플릿
+
+### 기본 run 스크립트 구조
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+얼굴 인식 시스템 실행 스크립트
+
+Example:
+    $ python run_face_recognition.py --source 0 --conf 0.5
+"""
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+# 프로젝트 루트 경로 추가
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
+from common.logging import setup_logging
+from common.config import load_config
+
+
+def parse_args():
+    """명령줄 인자 파싱"""
+    parser = argparse.ArgumentParser(description="얼굴 인식 시스템")
+    parser.add_argument("--source", type=str, default="0", 
+                       help="입력 소스 (카메라 ID 또는 파일 경로)")
+    parser.add_argument("--conf", type=float, default=0.5, 
+                       help="신뢰도 임계값")
+    parser.add_argument("--show", action="store_true", 
+                       help="결과 화면 표시")
+    return parser.parse_args()
+
+
+def main():
+    """메인 함수"""
+    args = parse_args()
+    
+    # 로깅 설정
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # 하드웨어 연결 검증
+        verify_hardware_connection()
+        
+        # 메인 로직 실행
+        logger.info("Starting face recognition system")
+        
+        # ... 실제 처리 로직 ...
+        
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise
+    finally:
+        logger.info("System shutdown completed")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+
+---
+
+**적용 우선순위**:
+1. 하드웨어 연결 검증 (필수)
+2. 리소스 해제 규칙 (필수)
+3. 키보드 입력 처리 (권장)
+4. 기본 성능 측정 (권장)
+
+
