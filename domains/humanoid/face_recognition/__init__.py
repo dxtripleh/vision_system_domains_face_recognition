@@ -7,4 +7,15 @@ Humanoid Face Recognition Domain.
 """
 
 __version__ = "1.0.0"
-__author__ = "Vision System Team" 
+__author__ = "Vision System Team"
+
+# 주요 모듈들 import
+from .models import FaceDetectionModel, FaceRecognitionModel
+from .services import FaceRecognitionService, IntegratedFaceRecognitionService
+
+__all__ = [
+    'FaceDetectionModel',
+    'FaceRecognitionModel', 
+    'FaceRecognitionService',
+    'IntegratedFaceRecognitionService'
+] 

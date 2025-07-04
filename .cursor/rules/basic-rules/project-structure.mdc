@@ -1,29 +1,54 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
 # 기본 프로젝트 구조 규칙
 
 ## 📁 현재 프로젝트 구조
 
 ```
+# 프로젝트 구조 규칙 (CROSS_PLATFORM_COMPATIBILITY 호환)
+
+## 📁 표준 프로젝트 구조
+
+```
 vision_system/
 ├── domains/                   # 도메인별 독립 개발
-│   └── face_recognition/      # 얼굴인식 도메인 (현재 개발 중)
-│       ├── core/              # 도메인 핵심 로직
-│       ├── infrastructure/    # 인프라 계층
-│       ├── interfaces/        # API 인터페이스
-│       └── runners/           # 실행 스크립트
+│   ├── humanoid/              # 인간형 도메인
+│   │   └── face_recognition/  # 얼굴인식 기능
+│   │       ├── model.py       # ONNX 모델 클래스
+│   │       ├── run.py         # 실시간 추론 실행
+│   │       └── test_model.py  # 단위 테스트
+│   ├── factory/               # 공장 도메인
+│   │   └── defect_detection/  # 불량 검출 기능
+│   │       ├── model.py       # ONNX 모델 클래스
+│   │       ├── run.py         # 실시간 추론 실행
+│   │       └── test_model.py  # 단위 테스트
+│   └── powerline_inspection/  # 활선 검사 도메인 (향후)
+│       └── inspection/        # 검사 기능
+│           ├── model.py
+│           ├── run.py
+│           └── test_model.py
 ├── shared/                    # 공통 모듈
-│   └── vision_core/           # 비전 알고리즘 공통 기능
+│   └── vision_core/           # 비전 알고리즘 공통 기능 (향후 생성 필요)
 ├── common/                    # 범용 유틸리티
-├── config/                    # 설정 파일
-├── models/                    # 모델 저장소
-│   └── weights/               # 모델 가중치
-├── datasets/                  # 학습 데이터
+├── config/                    # 설정 파일 (현재 누락, 생성 필요)
+├── models/                    # 모델 저장소 (현재 누락, 생성 필요)
+│   └── weights/               # 모델 가중치 (.onnx 파일)
+├── datasets/                  # 학습 데이터 (현재 누락, 생성 필요)
 ├── data/                      # 런타임 데이터
-│   ├── runtime/               # 런타임 임시 데이터
-│   └── domains/               # 도메인별 데이터
-└── scripts/                   # 개발 도구 스크립트
+│   ├── temp/                  # 임시 파일 (자동 정리)
+│   ├── logs/                  # 로그 파일
+│   ├── output/                # 결과물 저장
+│   └── domains/               # 도메인별 데이터 (현재 누락, 생성 필요)
+│       ├── humanoid/          # 인간형 도메인 데이터
+│       └── factory/           # 공장 도메인 데이터
+├── scripts/                   # 개발 도구 스크립트 (현재 누락, 생성 필요)
+└── tests/                     # 테스트 코드
 ```
 
-## 🔗 계층별 의존성 규칙
+## 🔗 계층별 의존성 규칙 (CROSS_PLATFORM_COMPATIBILITY 호환)
 
 ### 의존성 방향 (위에서 아래로만 허용)
 ```
@@ -39,23 +64,61 @@ Level 1: common/, config/      # 기반 계층
 ### 금지 사항
 ```python
 # ❌ 절대 금지: 도메인 간 직접 import
-from domains.face_recognition import something
+from domains.humanoid.face_recognition import something
 # 다른 도메인에서 사용 시
 
 # ❌ 절대 금지: 하위 계층에서 상위 계층 import
-from domains.face_recognition import something
+from domains.humanoid.face_recognition import something
 # common/ 폴더에서 사용 시
 
 # ✅ 올바른 방법: 공유 모듈을 통한 통신
-from shared.vision_core import FaceDetector
+from shared.vision_core.detection import FaceDetector
 ```
 
-## 📂 도메인 구조 (DDD 패턴)
+## 📂 도메인 구조 (CROSS_PLATFORM_COMPATIBILITY 호환)
 
-### face_recognition 도메인 예시
+### 표준 도메인 기능 구조 (현재 구조 반영)
 ```
-domains/face_recognition/
-├── core/                      # 핵심 비즈니스 로직
+domains/{domain_category}/{feature_name}/
+├── model.py        # ONNX 모델 로딩 및 추론 처리 클래스
+├── run.py          # USB 카메라 또는 이미지 파일을 입력으로 받아 실시간 추론 실행
+└── test_model.py   # 단위 테스트용 예제 이미지 추론 코드
+```
+
+### 도메인 카테고리별 구조
+```python
+DOMAIN_CATEGORIES = {
+    'humanoid': {
+        'description': '인간형 관련 도메인',
+        'features': [
+            'face_recognition',    # 얼굴인식
+            'emotion_detection',   # 감정 검출 (향후)
+            'pose_estimation'      # 자세 추정 (향후)
+        ]
+    },
+    'factory': {
+        'description': '공장 관련 도메인',
+        'features': [
+            'defect_detection',    # 불량 검출
+            'quality_assessment',  # 품질 평가 (향후)
+            'inventory_tracking'   # 재고 추적 (향후)
+        ]
+    },
+    'powerline_inspection': {
+        'description': '활선 검사 도메인',
+        'features': [
+            'inspection',          # 검사
+            'defect_detection',    # 결함 검출 (향후)
+            'thermal_analysis'     # 열화상 분석 (향후)
+        ]
+    }
+}
+```
+
+### 고급 도메인 구조 (선택적, 고급 기능용)
+```
+domains/{domain_category}/advanced/
+├── core/                      # 핵심 비즈니스 로직 (DDD 패턴)
 │   ├── entities/              # 엔티티
 │   ├── services/              # 도메인 서비스
 │   ├── repositories/          # 저장소 인터페이스
@@ -78,12 +141,12 @@ domains/face_recognition/
 ### 데이터 파일 위치
 ```python
 DATA_LOCATIONS = {
-    '런타임 임시 데이터': 'data/runtime/temp/',
-    '로그 파일': 'data/runtime/logs/',
-    '처리 결과': 'data/runtime/output/',
-    '도메인 데이터': 'data/domains/{domain_name}/',
-    '학습 데이터': 'datasets/{domain_name}/',
-    '모델 가중치': 'models/weights/',
+    '런타임 임시 데이터': 'data/temp/',
+    '로그 파일': 'data/logs/',
+    '처리 결과': 'data/output/',
+    '도메인 데이터': 'data/domains/{domain_category}/',
+    '학습 데이터': 'datasets/{domain_category}/',
+    '모델 가중치': 'models/weights/',  # .onnx 파일만 저장
     '설정 파일': 'config/'
 }
 ```
@@ -100,36 +163,28 @@ FORBIDDEN_ROOT_FILES = [
 ]
 ```
 
-## 📝 파일 네이밍 규칙
+## 📝 파일 네이밍 규칙 (CROSS_PLATFORM_COMPATIBILITY 호환)
 
-### 도메인 내 파일 네이밍
+### 도메인 기능 내 파일 네이밍
 ```python
-# 엔티티
-face.py
-person.py
+# 필수 파일 (CROSS_PLATFORM_COMPATIBILITY 규칙)
+model.py              # ONNX 모델 클래스
+run.py                # 실시간 추론 실행
+test_model.py         # 단위 테스트
 
-# 서비스
-face_detection_service.py
-face_recognition_service.py
-
-# 저장소
-face_repository.py
-person_repository.py
-
-# 모델
-retinaface_model.py
-arcface_model.py
-
-# 실행 스크립트
-run_face_recognition.py
-run_demo.py
+# 선택적 파일
+config.yaml           # 도메인별 설정
+README.md             # 기능 설명
+requirements.txt      # 의존성 (필요시)
 ```
 
-### 모델 가중치 네이밍
+### 모델 가중치 네이밍 (CROSS_PLATFORM_COMPATIBILITY 호환)
 ```python
-# 패턴: {task}_{architecture}_{dataset}_{date}.{ext}
-face_detection_retinaface_widerface_20250628.pt
+# 패턴: {task}_{architecture}_{dataset}_{date}.onnx
+# 학습은 PyTorch (.pt), 추론은 ONNX (.onnx) 필수
 face_recognition_arcface_glint360k_20250628.onnx
+defect_detection_yolov8n_factory_20250628.onnx
+powerline_inspection_efficientdet_d1_20250628.onnx
 ```
 
 ## 🔧 필수 폴더 및 파일
@@ -142,31 +197,28 @@ required_files = [
 ]
 ```
 
-### 도메인 폴더 필수 구조
+### 도메인 기능 폴더 필수 구조 (CROSS_PLATFORM_COMPATIBILITY)
 ```
-domains/{domain_name}/
+domains/{domain_category}/{feature_name}/
 ├── __init__.py           # 필수
-├── README.md             # 필수
-├── core/
-│   ├── __init__.py       # 필수
-│   └── README.md         # 권장
-├── infrastructure/
-│   ├── __init__.py       # 필수
-│   └── README.md         # 권장
-├── interfaces/
-│   ├── __init__.py       # 필수
-│   └── README.md         # 권장
-└── runners/
-    ├── __init__.py       # 필수
-    └── README.md         # 권장
+├── model.py              # 필수 (ONNX 모델 클래스)
+├── run.py                # 필수 (실시간 추론 실행)
+├── test_model.py         # 필수 (단위 테스트)
+└── README.md             # 권장
 ```
 
 ## 📊 폴더 용도 명확화
 
 ### datasets/ vs data/ 구분
 ```python
-# datasets/ - 학습 전용 (고정 데이터)
-datasets/face_recognition/
+# datasets/ - 학습 전용 (고정 데이터) - 현재 누락, 생성 필요
+datasets/humanoid/
+├── raw/                  # 원본 학습 데이터
+├── processed/            # 전처리된 데이터
+├── annotations/          # 라벨링 데이터
+└── splits/               # train/val/test 분할
+
+datasets/factory/
 ├── raw/                  # 원본 학습 데이터
 ├── processed/            # 전처리된 데이터
 ├── annotations/          # 라벨링 데이터
@@ -174,12 +226,12 @@ datasets/face_recognition/
 
 # data/ - 런타임 전용 (동적 데이터)
 data/
-├── runtime/              # 시스템 런타임 데이터
-│   ├── temp/             # 임시 파일 (자동 정리)
-│   ├── logs/             # 로그 파일
-│   └── output/           # 결과물
-└── domains/              # 도메인별 데이터
-    └── face_recognition/ # 얼굴인식 도메인 데이터
+├── temp/                 # 임시 파일 (자동 정리)
+├── logs/                 # 로그 파일
+├── output/               # 결과물
+└── domains/              # 도메인별 데이터 - 현재 누락, 생성 필요
+    ├── humanoid/         # 인간형 도메인 데이터
+    └── factory/          # 공장 도메인 데이터
 ```
 
 ## 🚫 구조 위반 사례
@@ -188,9 +240,9 @@ data/
 ```python
 # ❌ 금지: 순환 의존성
 # common/utils.py
-from domains.face_recognition.core.services import FaceService
+from domains.humanoid.face_recognition.model import FaceRecognitionModel
 
-# domains/face_recognition/core/services.py  
+# domains/humanoid/face_recognition/model.py  
 from common.utils import some_function
 ```
 
@@ -200,42 +252,123 @@ from common.utils import some_function
 output_file = "captured_frame.jpg"  # 루트에 저장
 
 # ✅ 올바른 위치
-output_file = "data/runtime/output/captured_frame.jpg"
+output_file = "data/output/captured_frame.jpg"
 ```
 
-### 3. 하드코딩된 경로
+### 3. CROSS_PLATFORM_COMPATIBILITY 위반
 ```python
 # ❌ 금지: 하드코딩된 경로
-model_path = "C:/Users/user/models/face_detection.pt"
+model_path = "C:\\models\\face_detection.onnx"
 
 # ✅ 올바른 방법
-model_path = "models/weights/face_detection_retinaface_widerface_20250628.pt"
+from pathlib import Path
+project_root = Path(__file__).parent.parent.parent
+model_path = project_root / "models" / "weights" / "face_detection.onnx"
 ```
 
-## 📏 구조 검증 방법
+## 🔄 CROSS_PLATFORM_COMPATIBILITY 통합 규칙
 
-### 기본 검증 스크립트
+### 경로 처리 (모든 파일에서 필수)
 ```python
-def validate_basic_structure():
-    """기본 프로젝트 구조 검증"""
-    required_folders = [
-        'domains', 'shared', 'common', 'config', 
-        'models/weights', 'data/runtime', 'scripts'
-    ]
-    
-    for folder in required_folders:
-        if not Path(folder).exists():
-            print(f"❌ Missing required folder: {folder}")
-            return False
-    
-    print("✅ Basic structure is valid")
-    return True
+# ✅ 필수: pathlib.Path 사용
+from pathlib import Path
+
+# 프로젝트 루트 경로 계산
+project_root = Path(__file__).parent.parent.parent
+
+# 모델 경로
+model_path = project_root / "models" / "weights" / "face_detection.onnx"
+
+# 설정 경로
+config_path = project_root / "config" / "face_recognition.yaml"
+
+# 데이터 경로
+data_path = project_root / "data" / "output"
 ```
 
----
+### 하드웨어 환경 자동 감지 (모든 run.py에서 필수)
+```python
+def get_optimal_config():
+    """하드웨어 환경에 따른 최적 설정 자동 선택"""
+    import platform, psutil
+    system = platform.system().lower()
+    cpu_count = psutil.cpu_count()
+    memory_gb = psutil.virtual_memory().total // (1024**3)
+    
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory // (1024**3) if gpu_available else 0
+    except:
+        gpu_available = False
+        gpu_memory = 0
+    
+    if gpu_available and gpu_memory >= 16:
+        return {"device": "cuda", "batch_size": 16, "model_size": "large", "precision": "fp16"}
+    elif gpu_available and gpu_memory >= 4:
+        return {"device": "cuda", "batch_size": 4, "model_size": "medium", "precision": "fp16"}
+    else:
+        return {"device": "cpu", "batch_size": 1, "model_size": "small", "precision": "fp32"}
+```
 
-**적용 우선순위**:
-1. 데이터 파일 위치 준수 (필수)
-2. 의존성 방향 준수 (필수)
-3. 도메인 구조 준수 (권장)
-4. 파일 네이밍 준수 (권장) 
+## 📋 누락된 폴더 생성 가이드
+
+### 현재 누락된 폴더들 (생성 필요)
+```python
+MISSING_FOLDERS = {
+    'config/': {
+        'purpose': '설정 파일 저장',
+        'files': ['__init__.py', 'face_recognition.yaml', 'defect_detection.yaml']
+    },
+    'models/': {
+        'purpose': '모델 저장소',
+        'subfolders': ['weights/']  # .onnx 파일 저장
+    },
+    'datasets/': {
+        'purpose': '학습 데이터 저장',
+        'subfolders': ['humanoid/', 'factory/']
+    },
+    'scripts/': {
+        'purpose': '개발 도구 스크립트',
+        'files': ['setup_coding_tools.py', 'validate_rules.py']
+    },
+    'data/domains/': {
+        'purpose': '도메인별 런타임 데이터',
+        'subfolders': ['humanoid/', 'factory/']
+    },
+    'shared/vision_core/': {
+        'purpose': '비전 알고리즘 공통 기능',
+        'subfolders': ['detection/', 'recognition/', 'preprocessing/']
+    }
+}
+```
+
+### 폴더 생성 스크립트 예시
+```python
+def create_missing_folders():
+    """누락된 폴더들 생성"""
+    from pathlib import Path
+    
+    missing_structure = {
+        'config': ['__init__.py'],
+        'models/weights': ['__init__.py'],
+        'datasets/humanoid': ['__init__.py'],
+        'datasets/factory': ['__init__.py'],
+        'scripts': ['__init__.py'],
+        'data/domains/humanoid': ['__init__.py'],
+        'data/domains/factory': ['__init__.py'],
+        'shared/vision_core/detection': ['__init__.py'],
+        'shared/vision_core/recognition': ['__init__.py'],
+        'shared/vision_core/preprocessing': ['__init__.py']
+    }
+    
+    for folder_path, files in missing_structure.items():
+        folder = Path(folder_path)
+        folder.mkdir(parents=True, exist_ok=True)
+        
+        for file in files:
+            file_path = folder / file
+            if not file_path.exists():
+                file_path.touch()
+                print(f"Created: {file_path}")
+``` 

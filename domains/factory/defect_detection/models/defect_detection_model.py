@@ -27,7 +27,14 @@ except ImportError:
     logging.error("ONNX Runtime이 설치되지 않았습니다. pip install onnxruntime를 실행하세요.")
     raise
 
-from . import DEFECT_TYPES
+# 불량 유형 정의 (순환 import 방지)
+DEFECT_TYPES = {
+    'scratch': {'id': 0, 'name': '스크래치', 'color': [0, 0, 255]},
+    'dent': {'id': 1, 'name': '함몰', 'color': [0, 255, 0]},
+    'crack': {'id': 2, 'name': '균열', 'color': [255, 0, 0]},
+    'discoloration': {'id': 3, 'name': '변색', 'color': [255, 255, 0]},
+    'contamination': {'id': 4, 'name': '오염', 'color': [255, 0, 255]}
+}
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,573 @@
+# 데이터 파이프라인 자동화 규칙 (Data Pipeline Automation Rules)
+
+이 규칙은 비전 시스템의 9단계 데이터 생명주기를 자동화하기 위한 개발 표준입니다.
+
+## 📊 9단계 데이터 생명주기 표준
+
+### 필수 적용 단계 (모든 도메인)
+```
+1. Raw Data Collection      # 원본 데이터 수집
+2. Feature Extraction       # 특이점 추출  
+3. Similarity Clustering    # 유사도 그룹핑
+4. Group Labeling          # 라벨링
+5. Embedding Generation    # 임베딩 생성
+6. Realtime Recognition    # 실시간 인식
+7. Database Management     # 데이터베이스 관리
+8. Performance Monitoring  # 성능 모니터링
+9. Continuous Learning     # 지속적 학습
+```
+
+## 🏗️ 표준 데이터 폴더 구조 (자동 생성)
+
+### 모든 도메인에 적용되는 필수 구조
+```
+data/domains/{domain}/{feature}/
+├── 1_raw/                  # 1단계: 원본 데이터
+│   ├── uploads/            # 사용자 직접 업로드
+│   ├── captures/           # 하드웨어 자동 캡처
+│   ├── imports/            # 외부 시스템 연동
+│   └── README.md           # 단계별 설명
+├── 2_extracted/            # 2단계: 특이점 추출
+│   ├── features/           # 검출된 특이점
+│   ├── metadata/           # 검출 메타데이터
+│   └── README.md
+├── 3_clustered/            # 3단계: 유사도 그룹핑
+│   ├── auto_groups/        # 자동 그룹핑 결과
+│   ├── similarity_matrix/  # 유사도 매트릭스
+│   └── README.md
+├── 4_labeled/              # 4단계: 라벨링
+│   ├── groups/             # 라벨링된 그룹들
+│   ├── unknown/            # 미분류 데이터
+│   └── README.md
+├── 5_embeddings/           # 5단계: 임베딩 생성
+│   ├── vectors/            # 임베딩 벡터
+│   ├── index/              # 검색 인덱스
+│   ├── metadata/           # 임베딩 메타데이터
+│   └── README.md
+├── cache/                  # 처리 캐시
+├── models/                 # 도메인별 모델
+└── README.md               # 전체 파이프라인 설명
+```
+
+## 🤖 자동화 스크립트 필수 구현
+
+### 1. 도메인 자동 생성 스크립트
+```python
+# scripts/create_domain.py (필수)
+def create_domain_structure(domain: str, feature: str):
+    """
+    새로운 도메인 생성 시 9단계 구조를 자동으로 생성합니다.
+    
+    Args:
+        domain: 도메인명 (humanoid, factory, powerline_inspection)
+        feature: 기능명 (face_recognition, defect_detection, inspection)
+    
+    자동 생성 항목:
+    - 9단계 데이터 폴더 구조
+    - 각 단계별 README.md
+    - __init__.py 파일들
+    - 기본 설정 파일
+    """
+    pass
+
+# 사용법
+# python scripts/create_domain.py humanoid emotion_detection
+```
+
+### 2. 파이프라인 자동 실행 스크립트  
+```python
+# scripts/run_pipeline.py (필수)
+def run_pipeline(domain: str, feature: str, stage: str = None):
+    """
+    9단계 파이프라인을 순차적으로 실행합니다.
+    
+    Args:
+        domain: 도메인명
+        feature: 기능명  
+        stage: 특정 단계만 실행 (선택적)
+    
+    실행 순서:
+    1. 데이터 유효성 검증
+    2. 이전 단계 완료 확인
+    3. 현재 단계 실행
+    4. 결과 검증
+    5. 다음 단계 준비
+    """
+    pass
+
+# 사용법
+# python scripts/run_pipeline.py humanoid face_recognition
+# python scripts/run_pipeline.py humanoid face_recognition --stage 2_extract_features
+```
+
+### 3. 파이프라인 검증 스크립트
+```python
+# scripts/validate_pipeline.py (필수)
+def validate_pipeline_structure(domain: str, feature: str):
+    """
+    9단계 파이프라인 구조와 데이터 무결성을 검증합니다.
+    
+    검증 항목:
+    - 필수 폴더 존재 여부
+    - 각 단계별 데이터 유효성
+    - 파이프라인 진행 상태
+    - 모델 파일 존재 여부
+    - 설정 파일 유효성
+    """
+    pass
+
+# Git pre-commit 훅에서 자동 실행
+```
+
+## 📋 단계별 모델 사용 규칙
+
+### 얼굴인식 도메인 필수 모델
+```python
+FACE_RECOGNITION_MODELS = {
+    'stage_2_extraction': {
+        'detection': 'retinaface',          # 얼굴 검출
+        'alignment': 'face_alignment',      # 얼굴 정렬
+        'quality': 'quality_assessment'     # 품질 평가
+    },
+    'stage_3_clustering': {
+        'embedding': 'arcface',             # 임베딩 생성
+        'clustering': 'dbscan'              # 클러스터링
+    },
+    'stage_5_embedding': {
+        'embedding': 'arcface',             # 고품질 임베딩
+        'indexing': 'faiss'                 # 벡터 인덱스
+    },
+    'stage_6_realtime': {
+        'detection': 'retinaface_light',    # 경량 검출
+        'embedding': 'arcface_light',       # 경량 임베딩
+        'search': 'faiss'                   # 빠른 검색
+    }
+}
+```
+
+### 불량검출 도메인 필수 모델
+```python
+DEFECT_DETECTION_MODELS = {
+    'stage_2_extraction': {
+        'detection': 'yolov8',              # 불량 검출
+        'segmentation': 'defect_segmentation', # 불량 영역 분할
+        'classification': 'resnet50'        # 불량 분류
+    },
+    'stage_3_clustering': {
+        'embedding': 'resnet50',            # 불량 임베딩
+        'clustering': 'dbscan'              # 클러스터링
+    },
+    'stage_5_embedding': {
+        'embedding': 'resnet50',            # 고품질 임베딩
+        'indexing': 'faiss'                 # 벡터 인덱스
+    },
+    'stage_6_realtime': {
+        'detection': 'yolov8_light',        # 경량 검출
+        'classification': 'resnet50_light', # 경량 분류
+        'search': 'faiss'                   # 빠른 검색
+    }
+}
+```
+
+## 🔄 자동화 워크플로우
+
+### 1. 새로운 도메인/기능 개발 시
+```bash
+# 1단계: 도메인 구조 자동 생성
+python scripts/create_domain.py [도메인] [기능]
+
+# 2단계: 개발 환경 자동 설정
+python scripts/setup_development_environment.py [도메인] [기능]
+
+# 3단계: 파이프라인 실행
+python scripts/run_pipeline.py [도메인] [기능]
+
+# 4단계: 실시간 시스템 준비
+python scripts/prepare_realtime_system.py [도메인] [기능]
+```
+
+### 2. 기존 도메인 확장 시
+```bash
+# 1단계: 기존 구조 검증
+python scripts/validate_pipeline.py [도메인] [기능]
+
+# 2단계: 새로운 데이터 추가
+python scripts/add_new_data.py [도메인] [기능] --source [데이터소스]
+
+# 3단계: 파이프라인 재실행 (필요한 단계부터)
+python scripts/run_pipeline.py [도메인] [기능] --from-stage [단계번호]
+```
+
+### 3. 성능 모니터링 및 개선
+```bash
+# 성능 측정
+python scripts/measure_performance.py [도메인] [기능]
+
+# 지속적 학습
+python scripts/continuous_learning.py [도메인] [기능]
+
+# 모델 업데이트
+python scripts/update_models.py [도메인] [기능]
+```
+
+## 🚫 필수 준수 사항
+
+### 1. 파이프라인 순서 엄격 준수
+```python
+# ❌ 절대 금지: 단계 건너뛰기
+# 2단계 완료 없이 3단계 실행 금지
+
+# ✅ 올바른 방법: 순차 실행
+def execute_pipeline():
+    stages = ['1_raw', '2_extracted', '3_clustered', '4_labeled', '5_embeddings']
+    for i, stage in enumerate(stages):
+        if not validate_previous_stage(stages[:i]):
+            raise PipelineError(f"이전 단계 미완료: {stage}")
+        execute_stage(stage)
+```
+
+### 2. 데이터 무결성 검증 필수
+```python
+# 각 단계 실행 전 반드시 검증
+def validate_stage_prerequisites(stage: str, domain: str, feature: str):
+    """단계 실행 전 전제조건 검증"""
+    
+    validators = {
+        '2_extracted': validate_raw_data_exists,
+        '3_clustered': validate_features_extracted,
+        '4_labeled': validate_clusters_created,
+        '5_embeddings': validate_labels_assigned,
+        '6_realtime': validate_embeddings_generated
+    }
+    
+    validator = validators.get(stage)
+    if validator and not validator(domain, feature):
+        raise PipelineError(f"{stage} 전제조건 미충족")
+```
+
+### 3. 진행 상황 추적 필수
+```python
+# 모든 단계에서 진행 상황 기록
+def track_pipeline_progress(domain: str, feature: str, stage: str, status: str):
+    """파이프라인 진행 상황 추적"""
+    
+    progress_file = f"data/domains/{domain}/{feature}/pipeline_progress.json"
+    
+    progress = load_progress(progress_file)
+    progress[stage] = {
+        'status': status,  # 'started', 'completed', 'failed'
+        'timestamp': datetime.now().isoformat(),
+        'duration': calculate_duration(),
+        'output_files': list_output_files(stage)
+    }
+    
+    save_progress(progress_file, progress)
+```
+
+### 4. 에러 복구 전략 필수
+```python
+# 각 단계별 롤백 기능 구현
+def rollback_stage(domain: str, feature: str, stage: str):
+    """단계별 롤백 기능"""
+    
+    rollback_strategies = {
+        '2_extracted': rollback_feature_extraction,
+        '3_clustered': rollback_clustering,
+        '4_labeled': rollback_labeling,
+        '5_embeddings': rollback_embedding_generation
+    }
+    
+    strategy = rollback_strategies.get(stage)
+    if strategy:
+        strategy(domain, feature)
+        update_progress_status(domain, feature, stage, 'rolled_back')
+```
+
+## 📊 성능 모니터링 자동화
+
+### 1. 각 단계별 성능 측정
+```python
+# 자동 성능 측정 및 기록
+class PipelinePerformanceMonitor:
+    def __init__(self, domain: str, feature: str):
+        self.domain = domain
+        self.feature = feature
+        self.metrics = {}
+    
+    def measure_stage_performance(self, stage: str, func, *args, **kwargs):
+        """단계별 성능 측정"""
+        start_time = time.time()
+        memory_before = psutil.virtual_memory().used
+        
+        try:
+            result = func(*args, **kwargs)
+            
+            # 성능 메트릭 계산
+            duration = time.time() - start_time
+            memory_used = psutil.virtual_memory().used - memory_before
+            
+            self.metrics[stage] = {
+                'duration_seconds': duration,
+                'memory_used_mb': memory_used / (1024 * 1024),
+                'success': True,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            return result
+            
+        except Exception as e:
+            self.metrics[stage] = {
+                'duration_seconds': time.time() - start_time,
+                'success': False,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }
+            raise
+        
+        finally:
+            self.save_metrics()
+```
+
+## 🎯 적용 우선순위
+
+### 1단계: 필수 구현 (즉시)
+- [x] `scripts/create_domain.py` 구현
+- [x] `scripts/run_pipeline.py` 구현  
+- [x] `scripts/validate_pipeline.py` 구현
+- [x] `scripts/manage_traceability.py` 구현 (NEW!)
+- [x] `scripts/validate_filenames.py` 구현 (NEW!)
+- [x] 9단계 폴더 구조 표준화
+- [x] 파일명 패턴 규칙 적용 (NEW!)
+
+### 2단계: 자동화 확장 (1주일 내)
+- [ ] 성능 모니터링 자동화
+- [ ] Git 훅 통합
+- [ ] 에러 복구 시스템
+- [ ] 진행 상황 추적
+- [ ] 추적성 검증 자동화 (NEW!)
+
+### 3단계: 고급 기능 (2주일 내)
+- [ ] 지속적 학습 자동화
+- [ ] 품질 메트릭 수집
+- [ ] 자동 모델 업데이트
+- [ ] 대시보드 통합
+- [ ] 데이터 계보 시각화 (NEW!)
+
+## ⚠️ 중요 규칙
+
+### 모든 개발자가 준수해야 할 사항
+1. **새로운 도메인/기능 개발 시 반드시 `create_domain.py` 사용**
+2. **파이프라인 실행 시 반드시 `run_pipeline.py` 사용**
+3. **수동 폴더 생성 절대 금지** (자동화 스크립트만 사용)
+4. **단계 건너뛰기 절대 금지** (순차 실행 필수)
+5. **데이터 무결성 검증 생략 금지** (각 단계별 검증 필수)
+6. **파일명 패턴 준수 필수** (추적성 보장) ⭐ NEW!
+7. **추적성 정보 업데이트 필수** (모든 단계에서) ⭐ NEW!
+
+### 코드 리뷰 시 확인 사항
+1. 9단계 파이프라인 순서 준수 여부
+2. 자동화 스크립트 사용 여부
+3. 성능 모니터링 코드 포함 여부
+4. 에러 처리 및 롤백 로직 포함 여부
+5. 진행 상황 추적 코드 포함 여부
+
+이 규칙을 준수하면 모든 비전 시스템 도메인에서 일관된 9단계 데이터 생명주기를 자동으로 적용할 수 있습니다.
+
+## 🧪 테스트 파일 관리 규칙 (NEW!)
+
+### 테스트 파일 위치 규칙 (엄격히 준수)
+```python
+TEST_FILE_LOCATION_RULES = {
+    'comprehensive_tests': {
+        'location': 'tests/',
+        'purpose': '전체 프로젝트 통합 테스트',
+        'scope': '도메인 간 연동, 전체 파이프라인, 성능 테스트',
+        'naming': 'test_{domain}_{feature}.py',
+        'examples': [
+            'tests/test_face_recognition_pipeline.py',
+            'tests/test_defect_detection_integration.py',
+            'tests/test_cross_domain_compatibility.py'
+        ]
+    },
+    'domain_development_tests': {
+        'location': 'domains/{domain}/{feature}/tests/',
+        'purpose': '도메인 개발 중 빠른 테스트',
+        'scope': '단위 테스트, 모델 테스트, 기능 테스트',
+        'naming': 'test_{component}.py',
+        'examples': [
+            'domains/humanoid/face_recognition/tests/test_model.py',
+            'domains/humanoid/face_recognition/tests/test_detection.py',
+            'domains/humanoid/face_recognition/tests/test_recognition.py'
+        ]
+    },
+    'pipeline_step_tests': {
+        'location': 'domains/{domain}/{feature}/pipeline/tests/',
+        'purpose': '파이프라인 단계별 테스트',
+        'scope': '각 단계별 기능, 데이터 처리, 모델 성능',
+        'naming': 'test_step_{step_number}_{step_name}.py',
+        'examples': [
+            'domains/humanoid/face_recognition/pipeline/tests/test_step_1_capture.py',
+            'domains/humanoid/face_recognition/pipeline/tests/test_step_2_extract.py',
+            'domains/humanoid/face_recognition/pipeline/tests/test_step_3_cluster.py'
+        ]
+    }
+}
+```
+
+### 테스트 파일 생성 금지 규칙
+```python
+FORBIDDEN_TEST_LOCATIONS = [
+    # ❌ 절대 금지: 루트 디렉토리에 테스트 파일
+    'test_*.py',                    # 루트에 테스트 파일 생성 금지
+    
+    # ❌ 절대 금지: 도메인 루트에 테스트 파일
+    'domains/humanoid/test_*.py',   # 도메인 루트에 테스트 파일 생성 금지
+    'domains/factory/test_*.py',    # 도메인 루트에 테스트 파일 생성 금지
+    
+    # ❌ 절대 금지: 기능 폴더 루트에 테스트 파일
+    'domains/humanoid/face_recognition/test_*.py',  # 기능 루트에 테스트 파일 생성 금지
+    
+    # ❌ 절대 금지: 공통 모듈에 테스트 파일
+    'common/test_*.py',             # common 폴더에 테스트 파일 생성 금지
+    'shared/test_*.py',             # shared 폴더에 테스트 파일 생성 금지
+    
+    # ❌ 절대 금지: 스크립트 폴더에 테스트 파일
+    'scripts/test_*.py',            # scripts 폴더에 테스트 파일 생성 금지
+]
+```
+
+### 테스트 파일 네이밍 규칙
+```python
+TEST_NAMING_CONVENTIONS = {
+    'comprehensive_tests': {
+        'pattern': 'test_{domain}_{feature}_{aspect}.py',
+        'examples': [
+            'test_humanoid_face_recognition_pipeline.py',
+            'test_humanoid_face_recognition_performance.py',
+            'test_factory_defect_detection_integration.py'
+        ]
+    },
+    'domain_tests': {
+        'pattern': 'test_{component}.py',
+        'examples': [
+            'test_model.py',
+            'test_detection.py',
+            'test_recognition.py',
+            'test_preprocessing.py'
+        ]
+    },
+    'pipeline_tests': {
+        'pattern': 'test_step_{number}_{name}.py',
+        'examples': [
+            'test_step_1_capture.py',
+            'test_step_2_extract.py',
+            'test_step_3_cluster.py',
+            'test_step_4_label.py',
+            'test_step_5_embed.py'
+        ]
+    }
+}
+```
+
+### 테스트 실행 규칙
+```python
+TEST_EXECUTION_RULES = {
+    'development_workflow': {
+        'description': '개발 중 빠른 테스트',
+        'location': 'domains/{domain}/{feature}/tests/',
+        'command': 'python -m pytest domains/{domain}/{feature}/tests/ -v',
+        'purpose': '개발 중 기능 검증'
+    },
+    'integration_testing': {
+        'description': '통합 테스트',
+        'location': 'tests/',
+        'command': 'python -m pytest tests/ -v',
+        'purpose': '전체 시스템 검증'
+    },
+    'pipeline_testing': {
+        'description': '파이프라인 단계별 테스트',
+        'location': 'domains/{domain}/{feature}/pipeline/tests/',
+        'command': 'python -m pytest domains/{domain}/{feature}/pipeline/tests/ -v',
+        'purpose': '파이프라인 단계별 검증'
+    }
+}
+```
+
+### 테스트 파일 검증 스크립트
+```python
+def validate_test_file_locations():
+    """테스트 파일 위치 규칙 검증"""
+    violations = []
+    
+    # 금지된 위치에 테스트 파일이 있는지 확인
+    for forbidden_pattern in FORBIDDEN_TEST_LOCATIONS:
+        test_files = Path('.').glob(forbidden_pattern)
+        for test_file in test_files:
+            violations.append(f"금지된 위치에 테스트 파일: {test_file}")
+    
+    # 올바른 위치에 테스트 파일이 있는지 확인
+    expected_locations = [
+        'tests/',
+        'domains/*/tests/',
+        'domains/*/*/tests/',
+        'domains/*/*/pipeline/tests/'
+    ]
+    
+    for pattern in expected_locations:
+        if not list(Path('.').glob(pattern)):
+            violations.append(f"필수 테스트 폴더 누락: {pattern}")
+    
+    return violations
+```
+
+### 테스트 파일 생성 가이드
+```python
+def create_test_file(domain: str, feature: str, test_type: str, component: str = None):
+    """테스트 파일 생성 가이드"""
+    
+    if test_type == 'comprehensive':
+        # 통합 테스트
+        test_path = Path('tests') / f'test_{domain}_{feature}_{component}.py'
+    elif test_type == 'domain':
+        # 도메인 테스트
+        test_path = Path('domains') / domain / feature / 'tests' / f'test_{component}.py'
+    elif test_type == 'pipeline':
+        # 파이프라인 테스트
+        test_path = Path('domains') / domain / feature / 'pipeline' / 'tests' / f'test_step_{component}.py'
+    else:
+        raise ValueError(f"Unknown test type: {test_type}")
+    
+    # 테스트 폴더 생성
+    test_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # 테스트 파일 템플릿 생성
+    create_test_template(test_path, test_type, domain, feature, component)
+    
+    return test_path
+```
+
+## ⚠️ 테스트 관련 중요 규칙
+
+### 모든 개발자가 준수해야 할 사항
+1. **테스트 파일은 반드시 지정된 위치에만 생성**
+2. **도메인 개발 중에는 `domains/{domain}/{feature}/tests/` 사용**
+3. **통합 테스트는 `tests/` 폴더에만 생성**
+4. **파이프라인 테스트는 `pipeline/tests/` 폴더에만 생성**
+5. **테스트 파일 네이밍 규칙 엄격 준수**
+6. **테스트 실행 전 위치 규칙 검증 필수**
+
+### 코드 리뷰 시 확인 사항
+1. 테스트 파일이 올바른 위치에 있는지 확인
+2. 테스트 파일 네이밍이 규칙에 맞는지 확인
+3. 금지된 위치에 테스트 파일이 없는지 확인
+4. 테스트 실행이 정상적으로 되는지 확인
+
+
+
+
+
+
+
+
+
+

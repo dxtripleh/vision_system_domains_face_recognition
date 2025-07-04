@@ -1,0 +1,500 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 🔄 규칙 통합 가이드 (CROSS_PLATFORM_COMPATIBILITY 우선)
+
+## 📋 규칙 우선순위
+
+### 1순위: CROSS_PLATFORM_COMPATIBILITY.mdc (절대 우선)
+- 모든 개발에서 반드시 준수
+- 다른 규칙과 충돌 시 이 규칙이 우선
+- 크로스 플랫폼 호환성 보장
+
+### 2순위: 기본 규칙들
+- python-standards.mdc
+- project-structure.mdc
+- data-management.mdc
+- vision-system-core.mdc
+
+### 3순위: 고급 규칙들
+- multi-domain.mdc
+- security-enhanced.mdc
+- monitoring-system.mdc
+- automation-tools.mdc
+
+## 🔧 주요 모순점 해결 방안
+
+### 1. 도메인 구조 모순 해결
+
+**문제**: CROSS_PLATFORM_COMPATIBILITY는 단순한 구조를 요구하지만, 다른 규칙들은 복잡한 DDD 패턴을 요구
+
+**해결책**:
+```python
+# ✅ 표준 구조 (CROSS_PLATFORM_COMPATIBILITY 우선) - 현재 구조 반영
+domains/{domain_category}/{feature_name}/
+├── model.py        # ONNX 모델 클래스
+├── run.py          # 실시간 추론 실행
+└── test_model.py   # 단위 테스트
+
+# ✅ 고급 구조 (선택적, 고급 기능용)
+domains/{domain_category}/advanced/
+├── core/           # DDD 패턴
+├── infrastructure/
+├── interfaces/
+└── runners/
+```
+
+### 2. 실행 파일 네이밍 모순 해결
+
+**문제**: CROSS_PLATFORM_COMPATIBILITY는 `run.py`를 요구하지만, python-standards는 `run_*.py` 패턴을 요구
+
+**해결책**:
+```python
+# ✅ 필수 파일 (CROSS_PLATFORM_COMPATIBILITY 규칙)
+run.py              # 기본 실행 파일
+
+# ✅ 선택적 파일 (추가 기능용)
+run_gui.py          # GUI 버전
+run_headless.py     # Headless 버전
+run_demo.py         # 데모 버전
+```
+
+### 3. 모델 포맷 모순 해결
+
+**문제**: CROSS_PLATFORM_COMPATIBILITY는 .onnx만 허용하지만, 다른 규칙들은 .pt도 사용
+
+**해결책**:
+```python
+# ✅ 학습 단계
+model.pt            # PyTorch 모델 (학습용)
+
+# ✅ 추론 단계 (CROSS_PLATFORM_COMPATIBILITY 필수)
+model.onnx          # ONNX 모델 (추론용)
+
+# ✅ 모델 가중치 네이밍
+{task}_{architecture}_{dataset}_{date}.onnx
+```
+
+## 📁 실제 프로젝트 구조 예시 (현재 구조 반영)
+
+```
+vision_system/
+├── domains/
+│   ├── humanoid/              # 인간형 도메인
+│   │   └── face_recognition/  # 얼굴인식 기능
+│   │       ├── model.py
+│   │       ├── run.py
+│   │       └── test_model.py
+│   ├── factory/               # 공장 도메인
+│   │   └── defect_detection/  # 불량 검출 기능
+│   │       ├── model.py
+│   │       ├── run.py
+│   │       └── test_model.py
+│   └── powerline_inspection/  # 활선 검사 도메인 (향후)
+│       └── inspection/
+│           ├── model.py
+│           ├── run.py
+│           └── test_model.py
+├── shared/
+│   └── vision_core/           # 비전 알고리즘 공통 기능 (향후 생성 필요)
+├── common/
+├── config/                    # 설정 파일 (현재 누락, 생성 필요)
+├── models/                    # 모델 저장소 (현재 누락, 생성 필요)
+│   └── weights/               # .onnx 파일만 저장
+├── datasets/                  # 학습 데이터 (현재 누락, 생성 필요)
+├── data/
+│   ├── temp/                  # 임시 파일 (자동 정리)
+│   ├── logs/                  # 로그 파일
+│   ├── output/                # 결과물 저장
+│   └── domains/               # 도메인별 데이터 (현재 누락, 생성 필요)
+│       ├── humanoid/          # 인간형 도메인 데이터
+│       └── factory/           # 공장 도메인 데이터
+├── scripts/                   # 개발 도구 스크립트 (현재 누락, 생성 필요)
+└── tests/
+```
+
+## 🔄 규칙 적용 체크리스트
+
+### 모든 새 기능 개발 시 확인사항
+
+#### 1. CROSS_PLATFORM_COMPATIBILITY 준수
+- [ ] `from pathlib import Path` import 포함
+- [ ] 하드코딩된 경로 없음
+- [ ] `os.path.join()` 또는 `Path` 사용
+- [ ] Python 3.10+ 호환성 고려
+- [ ] 하드웨어 환경 자동 감지
+- [ ] 플랫폼별 카메라 백엔드 사용
+- [ ] ONNX 모델 사용 (추론 시)
+- [ ] 시뮬레이션 모드 금지
+
+#### 2. 도메인 구조 준수 (현재 구조 반영)
+- [ ] `domains/{domain_category}/{feature_name}/` 구조 사용
+- [ ] `model.py`, `run.py`, `test_model.py` 필수 파일 포함
+- [ ] `__init__.py` 파일 포함
+- [ ] README.md 파일 포함
+
+#### 3. Python 표준 준수
+- [ ] 파일 헤더 포함
+- [ ] Import 순서 준수
+- [ ] Type hints 사용
+- [ ] Docstring 작성
+- [ ] 로깅 사용 (print() 금지)
+- [ ] 예외 처리 포함
+
+#### 4. 데이터 관리 준수
+- [ ] 임시 파일을 `data/temp/`에 저장
+- [ ] 로그 파일을 `data/logs/`에 저장
+- [ ] 결과물을 `data/output/`에 저장
+- [ ] 모델 파일을 `models/weights/`에 저장
+
+## 🚨 금지 사항 통합
+
+### 절대 금지 (모든 규칙에서)
+1. **하드코딩된 경로 사용**
+2. **시뮬레이션 모드 사용**
+3. **.pt 파일로 추론 (ONNX 필수)**
+4. **print() 문 사용 (로깅 사용)**
+5. **예외 처리 없는 리소스 사용**
+6. **도메인 간 직접 import**
+7. **루트 디렉토리에 임시 파일 생성**
+
+### CROSS_PLATFORM_COMPATIBILITY 특화 금지
+1. **백슬래시 사용 (`\`)**
+2. **Windows/Linux 전용 경로**
+3. **하드웨어 연결 없이 실행**
+4. **가짜 프레임/카메라 사용**
+
+## 📝 코드 템플릿 (현재 구조 반영)
+
+### 표준 model.py 템플릿
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+{domain_category} {feature_name} ONNX 모델 클래스.
+
+이 모듈은 {feature_name} 기능의 ONNX 모델 로딩 및 추론 처리를 제공합니다.
+"""
+
+import os
+import sys
+import logging
+from pathlib import Path  # CROSS_PLATFORM_COMPATIBILITY 필수
+from typing import Dict, List, Optional, Tuple, Union
+import numpy as np
+import onnxruntime as ort
+
+# 프로젝트 루트 경로 추가
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.append(str(project_root))
+
+from common.logging import get_logger
+
+logger = get_logger(__name__)
+
+class {FeatureName}Model:
+    """{feature_name} ONNX 모델 클래스"""
+    
+    def __init__(self, model_path: Optional[str] = None, config: Optional[Dict] = None):
+        """모델 초기화"""
+        self.config = config or {}
+        
+        # 모델 경로 설정 (CROSS_PLATFORM_COMPATIBILITY)
+        if model_path is None:
+            model_path = project_root / "models" / "weights" / f"{feature_name}.onnx"
+        
+        self.model_path = Path(model_path)
+        
+        if not self.model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {self.model_path}")
+        
+        # ONNX 런타임 세션 생성
+        self._create_session()
+        
+        logger.info(f"{FeatureName}Model initialized")
+    
+    def _create_session(self):
+        """ONNX 런타임 세션 생성"""
+        try:
+            # 하드웨어 환경에 따른 최적화 프로바이더 선택
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            self.session = ort.InferenceSession(str(self.model_path), providers=providers)
+            logger.info(f"ONNX session created with providers: {self.session.get_providers()}")
+        except Exception as e:
+            logger.error(f"Failed to create ONNX session: {e}")
+            raise
+    
+    def predict(self, image: np.ndarray) -> List[Dict]:
+        """이미지 추론"""
+        try:
+            # 전처리
+            input_data = self._preprocess(image)
+            
+            # 추론
+            outputs = self.session.run(None, {'input': input_data})
+            
+            # 후처리
+            results = self._postprocess(outputs)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Prediction failed: {e}")
+            raise
+    
+    def _preprocess(self, image: np.ndarray) -> np.ndarray:
+        """이미지 전처리"""
+        # TODO: 구현 필요
+        return image
+    
+    def _postprocess(self, outputs: List[np.ndarray]) -> List[Dict]:
+        """추론 결과 후처리"""
+        # TODO: 구현 필요
+        return []
+```
+
+### 표준 run.py 템플릿
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+{domain_category} {feature_name} 실시간 추론 실행 스크립트.
+
+이 스크립트는 USB 카메라 또는 이미지 파일을 입력으로 받아 실시간 추론을 실행합니다.
+"""
+
+import os
+import sys
+import argparse
+import logging
+import cv2
+import time
+from pathlib import Path  # CROSS_PLATFORM_COMPATIBILITY 필수
+from typing import Optional
+
+# 프로젝트 루트 경로 추가
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.append(str(project_root))
+
+from common.logging import setup_logging
+from common.config import load_config
+from .model import {FeatureName}Model
+
+def get_optimal_config():
+    """하드웨어 환경에 따른 최적 설정 자동 선택"""
+    import platform, psutil
+    system = platform.system().lower()
+    cpu_count = psutil.cpu_count()
+    memory_gb = psutil.virtual_memory().total // (1024**3)
+    
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory // (1024**3) if gpu_available else 0
+    except:
+        gpu_available = False
+        gpu_memory = 0
+    
+    if gpu_available and gpu_memory >= 16:
+        return {"device": "cuda", "batch_size": 16, "model_size": "large", "precision": "fp16"}
+    elif gpu_available and gpu_memory >= 4:
+        return {"device": "cuda", "batch_size": 4, "model_size": "medium", "precision": "fp16"}
+    else:
+        return {"device": "cpu", "batch_size": 1, "model_size": "small", "precision": "fp32"}
+
+def is_jetson():
+    """Jetson 환경 감지"""
+    try:
+        with open("/proc/device-tree/model", "r") as f:
+            return "jetson" in f.read().lower()
+    except:
+        return False
+
+def create_platform_camera(camera_id=0, config=None):
+    """플랫폼별 카메라 생성"""
+    import platform
+    system = platform.system().lower()
+    
+    if system == "windows":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
+    elif system == "linux":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
+        if is_jetson():
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    else:
+        cap = cv2.VideoCapture(camera_id)
+    
+    return cap
+
+def parse_args():
+    """명령줄 인자 파싱"""
+    parser = argparse.ArgumentParser(description="{feature_name} 실시간 추론")
+    parser.add_argument("--source", type=str, default="0", help="입력 소스 (카메라 ID, 파일 경로)")
+    parser.add_argument("--model", type=str, help="모델 파일 경로")
+    parser.add_argument("--config", type=str, help="설정 파일 경로")
+    parser.add_argument("--conf", type=float, default=0.5, help="신뢰도 임계값")
+    parser.add_argument("--show", action="store_true", help="결과 화면 표시")
+    parser.add_argument("--save", action="store_true", help="결과 저장")
+    return parser.parse_args()
+
+def handle_keyboard_input():
+    """키보드 입력 처리"""
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):
+        return 'quit'
+    elif key == ord('s'):
+        return 'save_frame'
+    elif key == ord('r'):
+        return 'toggle_record'
+    elif key == ord('p'):
+        return 'toggle_pause'
+    return None
+
+def main():
+    """메인 함수"""
+    args = parse_args()
+    
+    # 로깅 설정
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    
+    # 설정 로드
+    config = load_config(args.config)
+    
+    try:
+        # 하드웨어 최적화 설정
+        optimal_config = get_optimal_config()
+        logger.info(f"Optimal config: {optimal_config}")
+        
+        # 모델 로딩
+        model = {FeatureName}Model(args.model, config)
+        
+        # 입력 소스 설정
+        if args.source.isdigit():
+            cap = create_platform_camera(int(args.source))
+        else:
+            cap = cv2.VideoCapture(args.source)
+        
+        if not cap.isOpened():
+            logger.error(f"Cannot open source: {args.source}")
+            return
+        
+        # 메인 처리 루프
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # 추론 실행
+            start_time = time.time()
+            results = model.predict(frame)
+            processing_time = time.time() - start_time
+            
+            # 결과 시각화
+            if args.show:
+                # TODO: 결과 시각화 구현
+                cv2.imshow('Result', frame)
+                
+                # 키보드 입력 처리
+                action = handle_keyboard_input()
+                if action == 'quit':
+                    break
+                elif action == 'save_frame':
+                    output_path = project_root / "data" / "output" / f"frame_{int(time.time())}.jpg"
+                    cv2.imwrite(str(output_path), frame)
+                    logger.info(f"Frame saved: {output_path}")
+        
+        cap.release()
+        cv2.destroyAllWindows()
+        
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise
+    finally:
+        logger.info("Finished {feature_name}")
+
+if __name__ == "__main__":
+    main()
+```
+
+## 📋 누락된 폴더 생성 가이드
+
+### 현재 누락된 폴더들 (생성 필요)
+```python
+MISSING_FOLDERS = {
+    'config/': {
+        'purpose': '설정 파일 저장',
+        'files': ['__init__.py', 'face_recognition.yaml', 'defect_detection.yaml']
+    },
+    'models/': {
+        'purpose': '모델 저장소',
+        'subfolders': ['weights/']  # .onnx 파일 저장
+    },
+    'datasets/': {
+        'purpose': '학습 데이터 저장',
+        'subfolders': ['humanoid/', 'factory/']
+    },
+    'scripts/': {
+        'purpose': '개발 도구 스크립트',
+        'files': ['setup_coding_tools.py', 'validate_rules.py']
+    },
+    'data/domains/': {
+        'purpose': '도메인별 런타임 데이터',
+        'subfolders': ['humanoid/', 'factory/']
+    },
+    'shared/vision_core/': {
+        'purpose': '비전 알고리즘 공통 기능',
+        'subfolders': ['detection/', 'recognition/', 'preprocessing/']
+    }
+}
+```
+
+### 폴더 생성 스크립트 예시
+```python
+def create_missing_folders():
+    """누락된 폴더들 생성"""
+    from pathlib import Path
+    
+    missing_structure = {
+        'config': ['__init__.py'],
+        'models/weights': ['__init__.py'],
+        'datasets/humanoid': ['__init__.py'],
+        'datasets/factory': ['__init__.py'],
+        'scripts': ['__init__.py'],
+        'data/domains/humanoid': ['__init__.py'],
+        'data/domains/factory': ['__init__.py'],
+        'shared/vision_core/detection': ['__init__.py'],
+        'shared/vision_core/recognition': ['__init__.py'],
+        'shared/vision_core/preprocessing': ['__init__.py']
+    }
+    
+    for folder_path, files in missing_structure.items():
+        folder = Path(folder_path)
+        folder.mkdir(parents=True, exist_ok=True)
+        
+        for file in files:
+            file_path = folder / file
+            if not file_path.exists():
+                file_path.touch()
+                print(f"Created: {file_path}")
+```
+
+## 🎯 결론
+
+이 통합 가이드를 따라 개발하면:
+
+1. **CROSS_PLATFORM_COMPATIBILITY 규칙을 최우선으로 준수**
+2. **현재 프로젝트 구조에 맞는 일관된 개발 환경 구축**
+3. **다른 규칙들의 장점도 활용**
+4. **모순점 없이 확장 가능한 구조 유지**
+5. **크로스 플랫폼 호환성 보장**
+
+모든 새로운 기능 개발 시 이 가이드를 참조하여 일관성 있는 코드를 작성하세요.
+
+
+

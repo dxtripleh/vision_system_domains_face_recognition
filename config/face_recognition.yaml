@@ -1,0 +1,94 @@
+# 얼굴인식 도메인 설정 파일
+# 파일: config/face_recognition.yaml
+
+version: "1.0.0"
+meta:
+  description: "얼굴인식 도메인 설정"
+  lastModified: "2025-01-28T10:00:00Z"
+  status: "active"
+
+# 모델 설정
+models:
+  face_detection:
+    path: "models/weights/face_detection_retinaface_widerface_20250628.onnx"
+    architecture: "retinaface"
+    input_size: [640, 640]
+    confidence_threshold: 0.5
+    nms_threshold: 0.4
+    device: "auto"  # auto, cpu, cuda
+    precision: "auto"  # auto, fp32, fp16
+  
+  face_recognition:
+    path: "models/weights/face_recognition_arcface_glint360k_20250628.onnx"
+    architecture: "arcface"
+    input_size: [112, 112]
+    embedding_size: 512
+    similarity_threshold: 0.6
+    device: "auto"
+    precision: "auto"
+
+# 전처리 설정
+preprocessing:
+  resize:
+    detection: [640, 640]
+    recognition: [112, 112]
+  normalization:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+  face_alignment:
+    enabled: true
+    output_size: [112, 112]
+    eye_center_ratio: 0.35
+
+# 검출 설정
+detection:
+  min_face_size: 80
+  max_face_size: 640
+  enable_landmarks: true
+  landmark_points: 5
+  enable_pose: false
+
+# 인식 설정
+recognition:
+  distance_metric: "cosine"  # cosine, euclidean, manhattan
+  enable_face_quality: true
+  quality_threshold: 0.5
+  enable_liveness: false
+  matching_strategy: "nearest"
+  k_neighbors: 1
+
+# 성능 설정
+performance:
+  batch_size: 1
+  num_threads: 4
+  enable_cache: true
+  cache_size: 100
+  enable_optimization: true
+
+# 데이터베이스 설정
+database:
+  path: "data/domains/humanoid/face_database.json"
+  auto_save: true
+  backup_enabled: true
+  max_embeddings_per_person: 10
+
+# 로깅 설정
+logging:
+  level: "INFO"
+  file: "data/logs/face_recognition.log"
+  max_size: "10MB"
+  backup_count: 5
+
+# 보안 설정
+security:
+  anonymize_by_default: true
+  gdpr_compliance: true
+  data_retention_days: 30
+  encryption_enabled: false
+
+# 하드웨어 설정
+hardware:
+  gpu_memory_fraction: 0.8
+  cpu_affinity: "auto"
+  enable_tensorrt: false
+  enable_openvino: false 

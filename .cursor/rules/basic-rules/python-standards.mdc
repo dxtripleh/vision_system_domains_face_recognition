@@ -1,19 +1,9 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
-# 기본 Python 개발 표준
-
-## 📝 파일 헤더 (모든 .py 파일 필수)
-
-```python
-# 기본 Python 개발 표준
-
-## 📝 파일 헤더 (모든 .py 파일 필수)
-
-```python
-# 기본 Python 개발 표준
+# 기본 Python 개발 표준 (CROSS_PLATFORM_COMPATIBILITY 호환)
 
 ## 📝 파일 헤더 (모든 .py 파일 필수)
 
@@ -28,13 +18,14 @@ alwaysApply: false
 Example:
     기본적인 사용 예시를 여기에 작성합니다.
     
-    $ python run_main_process.py --input data.csv
+    $ python run.py --input data.csv
 """
 
 import os
 import sys
 import logging
 from typing import Dict, List, Optional, Tuple, Union
+from pathlib import Path  # CROSS_PLATFORM_COMPATIBILITY 필수
 ```
 
 ## 📦 Import 순서 (실용적 규칙)
@@ -45,7 +36,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import os
 import sys
 import time
-from pathlib import Path
+from pathlib import Path  # CROSS_PLATFORM_COMPATIBILITY 필수
 from typing import Dict, List, Optional, Tuple, Union
 
 # 2. 서드파티 라이브러리 (alphabetical order)
@@ -70,7 +61,7 @@ from .models import DataModel
 import os
 import sys
 import time
-from pathlib import Path
+from pathlib import Path  # CROSS_PLATFORM_COMPATIBILITY 필수
 from typing import Dict, List, Optional, Tuple, Union
 
 # 서드파티 라이브러리
@@ -155,28 +146,140 @@ def safe_process():
         raise
 ```
 
-## 📂 파일 네이밍 규칙
+## 📂 파일 네이밍 규칙 (CROSS_PLATFORM_COMPATIBILITY 호환)
 
 ### Python 파일 네이밍
-- **실행 파일**: `run_*.py` (예: `run_face_recognition.py`)
-- **테스트 파일**: `test_*.py` (예: `test_face_detection.py`)
+- **실행 파일**: `run.py` (CROSS_PLATFORM_COMPATIBILITY 규칙)
+- **모델 파일**: `model.py` (ONNX 모델 클래스)
+- **테스트 파일**: `test_model.py` (단위 테스트)
 - **서비스 파일**: `*_service.py` (예: `face_detection_service.py`)
-- **모델 파일**: `*_model.py` (예: `retinaface_model.py`)
+- **추가 실행 파일**: `run_gui.py`, `run_headless.py` (선택적)
 
 ### 변수 및 함수 네이밍
 - **변수/함수**: snake_case (예: `detect_faces`, `confidence_score`)
 - **클래스**: PascalCase (예: `FaceDetector`, `PersonRepository`)
 - **상수**: UPPER_SNAKE_CASE (예: `DEFAULT_CONFIDENCE`, `MAX_FACES`)
 
-## ⚠️ 금지 사항
+## 🔧 CROSS_PLATFORM_COMPATIBILITY 필수 규칙
+
+### 경로 처리 (모든 파일에서 필수)
+```python
+# ✅ 필수: pathlib.Path 사용
+from pathlib import Path
+
+# 프로젝트 루트 경로 계산
+project_root = Path(__file__).parent.parent
+
+# 모델 경로 (.onnx 파일)
+model_path = project_root / "models" / "weights" / "face_detection.onnx"
+
+# 설정 경로
+config_path = project_root / "config" / "face_recognition.yaml"
+
+# 데이터 경로
+data_path = project_root / "data" / "runtime" / "output"
+
+# ❌ 절대 금지: 하드코딩된 경로
+# model_path = "C:\\models\\face_detection.onnx"
+# model_path = "/home/user/models/face_detection.onnx"
+```
+
+### 하드웨어 환경 자동 감지 (모든 run.py에서 필수)
+```python
+def get_optimal_config():
+    """하드웨어 환경에 따른 최적 설정 자동 선택"""
+    import platform, psutil
+    system = platform.system().lower()
+    cpu_count = psutil.cpu_count()
+    memory_gb = psutil.virtual_memory().total // (1024**3)
+    
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory // (1024**3) if gpu_available else 0
+    except:
+        gpu_available = False
+        gpu_memory = 0
+    
+    if gpu_available and gpu_memory >= 16:
+        return {"device": "cuda", "batch_size": 16, "model_size": "large", "precision": "fp16"}
+    elif gpu_available and gpu_memory >= 4:
+        return {"device": "cuda", "batch_size": 4, "model_size": "medium", "precision": "fp16"}
+    else:
+        return {"device": "cpu", "batch_size": 1, "model_size": "small", "precision": "fp32"}
+
+def is_jetson():
+    """Jetson 환경 감지"""
+    try:
+        with open("/proc/device-tree/model", "r") as f:
+            return "jetson" in f.read().lower()
+    except:
+        return False
+```
+
+### 카메라 백엔드 호환성 (모든 run.py에서 필수)
+```python
+def create_platform_camera(camera_id=0, config=None):
+    """플랫폼별 카메라 생성"""
+    import platform
+    system = platform.system().lower()
+    
+    if system == "windows":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
+    elif system == "linux":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
+        if is_jetson():
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    else:
+        cap = cv2.VideoCapture(camera_id)
+    
+    return cap
+```
+
+### Python 버전 호환성 (모든 파일에서 필수)
+```python
+import sys
+
+# Python 3.10+ 호환성
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    TypeAlias = type
+
+# match-case 문법 호환성
+if sys.version_info >= (3, 10):
+    def process_result(result):
+        match result:
+            case {"status": "success", "data": data}:
+                return data
+            case {"status": "error", "message": msg}:
+                raise ValueError(msg)
+            case _:
+                raise ValueError("Unknown result format")
+else:
+    def process_result(result):
+        if result.get("status") == "success":
+            return result.get("data")
+        elif result.get("status") == "error":
+            raise ValueError(result.get("message"))
+        else:
+            raise ValueError("Unknown result format")
+```
+
+## ⚠️ 금지 사항 (CROSS_PLATFORM_COMPATIBILITY 강화)
 
 1. **절대 금지**: 하드코딩된 경로 사용
    ```python
    # ❌ 금지
    image_path = "C:/Users/user/images/face.jpg"
+   model_path = "/home/user/models/face_detection.onnx"
    
    # ✅ 올바른 방법
-   image_path = config.get('image_path', 'data/images/face.jpg')
+   from pathlib import Path
+   project_root = Path(__file__).parent.parent
+   image_path = project_root / "data" / "images" / "face.jpg"
+   model_path = project_root / "models" / "weights" / "face_detection.onnx"
    ```
 
 2. **절대 금지**: 예외 처리 없는 리소스 사용
@@ -203,6 +306,47 @@ def safe_process():
    # ✅ 올바른 방법
    logger.info(f"Face detected: {face_count}")
    ```
+
+4. **절대 금지**: 시뮬레이션 모드 사용
+   ```python
+   # ❌ 금지
+   if os.environ.get("USE_SIMULATION", "False").lower() == "true":
+       # 가짜 데이터 사용
+       pass
+   
+   # ✅ 올바른 방법
+   # 실제 하드웨어 연결 및 검증
+   if not verify_hardware_connection():
+       raise RuntimeError("Hardware connection failed")
+   ```
+
+5. **절대 금지**: .pt 파일로 추론 (ONNX 필수)
+   ```python
+   # ❌ 금지
+   model = torch.load("face_detection.pt")
+   
+   # ✅ 올바른 방법
+   import onnxruntime as ort
+   session = ort.InferenceSession("face_detection.onnx")
+   ```
+
+## 📋 CROSS_PLATFORM_COMPATIBILITY 체크리스트
+
+### 모든 Python 파일에서 확인할 사항
+- [ ] `from pathlib import Path` import 포함
+- [ ] 하드코딩된 경로 없음
+- [ ] `os.path.join()` 또는 `Path` 사용
+- [ ] Python 3.10+ 호환성 고려
+- [ ] 예외 처리 포함
+- [ ] 로깅 사용 (print() 금지)
+
+### 모든 run.py 파일에서 확인할 사항
+- [ ] `get_optimal_config()` 함수 포함
+- [ ] `create_platform_camera()` 함수 포함
+- [ ] `is_jetson()` 함수 포함 (Linux 환경)
+- [ ] 하드웨어 연결 검증
+- [ ] ONNX 모델 사용
+- [ ] 시뮬레이션 모드 금지
 
 ## 🔧 코드 품질 도구 (선택적)
 

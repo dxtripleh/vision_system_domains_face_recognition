@@ -3,11 +3,11 @@ description:
 globs: 
 alwaysApply: false
 ---
-# 다중 도메인 관리 (ADVANCED)
+# 다중 도메인 관리 (ADVANCED) - CROSS_PLATFORM_COMPATIBILITY 호환
 
 ## 🏗️ 도메인 확장 전략
 
-### 새로운 도메인 추가 절차
+### 새로운 도메인 추가 절차 (CROSS_PLATFORM_COMPATIBILITY 호환)
 ```python
 # 도메인 추가 시 체크리스트
 DOMAIN_ADDITION_CHECKLIST = {
@@ -18,7 +18,7 @@ DOMAIN_ADDITION_CHECKLIST = {
         'integration_points_identification' # 통합 지점 식별
     ],
     'implementation': [
-        'domain_structure_creation',        # 도메인 구조 생성
+        'domain_structure_creation',        # 도메인 구조 생성 (CROSS_PLATFORM_COMPATIBILITY 규칙)
         'core_entities_definition',         # 핵심 엔티티 정의
         'services_implementation',          # 서비스 구현
         'infrastructure_setup',             # 인프라 설정
@@ -38,44 +38,414 @@ DOMAIN_ADDITION_CHECKLIST = {
     ]
 }
 
-def create_new_domain(domain_name: str, domain_type: str):
-    """새로운 도메인 생성"""
+def create_new_domain(domain_name: str, feature_name: str):
+    """새로운 도메인 기능 생성 (CROSS_PLATFORM_COMPATIBILITY 규칙)"""
     
-    # 1. 도메인 디렉토리 구조 생성
-    domain_path = f"domains/{domain_name}"
+    from pathlib import Path  # CROSS_PLATFORM_COMPATIBILITY 필수
     
-    structure = {
-        'core': ['entities', 'services', 'value_objects'],
-        'infrastructure': ['models', 'storage', 'external_apis'],
-        'interfaces': ['api', 'cli'],
-        'runners': ['training', 'inference', 'demo']
-    }
+    # 1. 도메인 기능 디렉토리 구조 생성
+    domain_path = Path("domains") / domain_name / feature_name
     
-    for layer, subdirs in structure.items():
-        layer_path = os.path.join(domain_path, layer)
-        os.makedirs(layer_path, exist_ok=True)
+    # 필수 파일 목록 (CROSS_PLATFORM_COMPATIBILITY 규칙)
+    required_files = [
+        '__init__.py',
+        'model.py',        # ONNX 모델 클래스
+        'run.py',          # 실시간 추론 실행
+        'test_model.py',   # 단위 테스트
+        'README.md'        # 기능 설명
+    ]
+    
+    # 디렉토리 생성
+    domain_path.mkdir(parents=True, exist_ok=True)
+    
+    # 필수 파일 생성
+    for file_name in required_files:
+        file_path = domain_path / file_name
+        if not file_path.exists():
+            if file_name == '__init__.py':
+                content = f'"""Domain: {domain_name} - Feature: {feature_name}"""\n'
+            elif file_name == 'model.py':
+                content = f'''#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+{domain_name} {feature_name} ONNX 모델 클래스.
+
+이 모듈은 {feature_name} 기능의 ONNX 모델 로딩 및 추론 처리를 제공합니다.
+"""
+
+import os
+import sys
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+import numpy as np
+import onnxruntime as ort
+
+# 프로젝트 루트 경로 추가
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root))
+
+from common.logging import get_logger
+
+logger = get_logger(__name__)
+
+class {feature_name.title().replace('_', '')}Model:
+    """{feature_name} ONNX 모델 클래스"""
+    
+    def __init__(self, model_path: Optional[str] = None, config: Optional[Dict] = None):
+        """모델 초기화
         
-        # __init__.py 파일 생성
-        with open(os.path.join(layer_path, '__init__.py'), 'w') as f:
-            f.write(f'"""Domain: {domain_name} - Layer: {layer}"""\n')
+        Args:
+            model_path: ONNX 모델 파일 경로
+            config: 모델 설정 딕셔너리
+        """
+        self.config = config or {{}}
         
-        for subdir in subdirs:
-            subdir_path = os.path.join(layer_path, subdir)
-            os.makedirs(subdir_path, exist_ok=True)
+        # 모델 경로 설정
+        if model_path is None:
+            model_path = project_root / "models" / "weights" / f"{feature_name}.onnx"
+        
+        self.model_path = Path(model_path)
+        
+        if not self.model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {{self.model_path}}")
+        
+        # ONNX 런타임 세션 생성
+        self._create_session()
+        
+        logger.info(f"{feature_name.title().replace('_', '')}Model initialized")
+    
+    def _create_session(self):
+        """ONNX 런타임 세션 생성"""
+        try:
+            # 하드웨어 환경에 따른 최적화 프로바이더 선택
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            self.session = ort.InferenceSession(str(self.model_path), providers=providers)
+            logger.info(f"ONNX session created with providers: {{self.session.get_providers()}}")
+        except Exception as e:
+            logger.error(f"Failed to create ONNX session: {{e}}")
+            raise
+    
+    def predict(self, image: np.ndarray) -> List[Dict]:
+        """이미지 추론
+        
+        Args:
+            image: 입력 이미지 (numpy 배열)
             
-            with open(os.path.join(subdir_path, '__init__.py'), 'w') as f:
-                f.write(f'"""Domain: {domain_name} - {layer}.{subdir}"""\n')
+        Returns:
+            추론 결과 리스트
+        """
+        try:
+            # 전처리
+            input_data = self._preprocess(image)
+            
+            # 추론
+            outputs = self.session.run(None, {{'input': input_data}})
+            
+            # 후처리
+            results = self._postprocess(outputs)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Prediction failed: {{e}}")
+            raise
     
-    # 2. 도메인별 설정 파일 생성
-    create_domain_config(domain_name, domain_type)
+    def _preprocess(self, image: np.ndarray) -> np.ndarray:
+        """이미지 전처리"""
+        # TODO: 구현 필요
+        return image
     
-    # 3. README 파일 생성
-    create_domain_readme(domain_name, domain_type)
+    def _postprocess(self, outputs: List[np.ndarray]) -> List[Dict]:
+        """추론 결과 후처리"""
+        # TODO: 구현 필요
+        return []
+'''
+            elif file_name == 'run.py':
+                content = f'''#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+{domain_name} {feature_name} 실시간 추론 실행 스크립트.
+
+이 스크립트는 USB 카메라 또는 이미지 파일을 입력으로 받아 실시간 추론을 실행합니다.
+"""
+
+import os
+import sys
+import argparse
+import logging
+import cv2
+import time
+from pathlib import Path
+from typing import Optional
+
+# 프로젝트 루트 경로 추가
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root))
+
+from common.logging import setup_logging
+from common.config import load_config
+from .model import {feature_name.title().replace('_', '')}Model
+
+def get_optimal_config():
+    """하드웨어 환경에 따른 최적 설정 자동 선택"""
+    import platform, psutil
+    system = platform.system().lower()
+    cpu_count = psutil.cpu_count()
+    memory_gb = psutil.virtual_memory().total // (1024**3)
     
-    print(f"✓ Domain '{domain_name}' created successfully")
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory // (1024**3) if gpu_available else 0
+    except:
+        gpu_available = False
+        gpu_memory = 0
+    
+    if gpu_available and gpu_memory >= 16:
+        return {{"device": "cuda", "batch_size": 16, "model_size": "large", "precision": "fp16"}}
+    elif gpu_available and gpu_memory >= 4:
+        return {{"device": "cuda", "batch_size": 4, "model_size": "medium", "precision": "fp16"}}
+    else:
+        return {{"device": "cpu", "batch_size": 1, "model_size": "small", "precision": "fp32"}}
+
+def is_jetson():
+    """Jetson 환경 감지"""
+    try:
+        with open("/proc/device-tree/model", "r") as f:
+            return "jetson" in f.read().lower()
+    except:
+        return False
+
+def create_platform_camera(camera_id=0, config=None):
+    """플랫폼별 카메라 생성"""
+    import platform
+    system = platform.system().lower()
+    
+    if system == "windows":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
+    elif system == "linux":
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
+        if is_jetson():
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    else:
+        cap = cv2.VideoCapture(camera_id)
+    
+    return cap
+
+def parse_args():
+    """명령줄 인자 파싱"""
+    parser = argparse.ArgumentParser(description="{feature_name} 실시간 추론")
+    parser.add_argument("--source", type=str, default="0", help="입력 소스 (카메라 ID, 파일 경로)")
+    parser.add_argument("--model", type=str, help="모델 파일 경로")
+    parser.add_argument("--config", type=str, help="설정 파일 경로")
+    parser.add_argument("--conf", type=float, default=0.5, help="신뢰도 임계값")
+    parser.add_argument("--show", action="store_true", help="결과 화면 표시")
+    parser.add_argument("--save", action="store_true", help="결과 저장")
+    return parser.parse_args()
+
+def handle_keyboard_input():
+    """키보드 입력 처리"""
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):
+        return 'quit'
+    elif key == ord('s'):
+        return 'save_frame'
+    elif key == ord('r'):
+        return 'toggle_record'
+    elif key == ord('p'):
+        return 'toggle_pause'
+    return None
+
+def main():
+    """메인 함수"""
+    args = parse_args()
+    
+    # 로깅 설정
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    
+    # 설정 로드
+    config = load_config(args.config)
+    
+    try:
+        # 하드웨어 최적화 설정
+        optimal_config = get_optimal_config()
+        logger.info(f"Optimal config: {{optimal_config}}")
+        
+        # 모델 로딩
+        model = {feature_name.title().replace('_', '')}Model(args.model, config)
+        
+        # 입력 소스 설정
+        if args.source.isdigit():
+            cap = create_platform_camera(int(args.source))
+        else:
+            cap = cv2.VideoCapture(args.source)
+        
+        if not cap.isOpened():
+            logger.error(f"Cannot open source: {{args.source}}")
+            return
+        
+        # 메인 처리 루프
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # 추론 실행
+            start_time = time.time()
+            results = model.predict(frame)
+            processing_time = time.time() - start_time
+            
+            # 결과 시각화
+            if args.show:
+                # TODO: 결과 시각화 구현
+                cv2.imshow('Result', frame)
+                
+                # 키보드 입력 처리
+                action = handle_keyboard_input()
+                if action == 'quit':
+                    break
+                elif action == 'save_frame':
+                    output_path = project_root / "data" / "runtime" / "output" / f"frame_{{int(time.time())}}.jpg"
+                    cv2.imwrite(str(output_path), frame)
+                    logger.info(f"Frame saved: {{output_path}}")
+        
+        cap.release()
+        cv2.destroyAllWindows()
+        
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+    except Exception as e:
+        logger.error(f"Error: {{e}}")
+        raise
+    finally:
+        logger.info("Finished {feature_name}")
+
+if __name__ == "__main__":
+    main()
+'''
+            elif file_name == 'test_model.py':
+                content = f'''#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+{domain_name} {feature_name} 모델 단위 테스트.
+
+이 모듈은 {feature_name} 모델의 단위 테스트를 제공합니다.
+"""
+
+import os
+import sys
+import unittest
+import numpy as np
+from pathlib import Path
+
+# 프로젝트 루트 경로 추가
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root))
+
+from .model import {feature_name.title().replace('_', '')}Model
+
+class Test{feature_name.title().replace('_', '')}Model(unittest.TestCase):
+    """{feature_name.title().replace('_', '')}Model 테스트 클래스"""
+    
+    def setUp(self):
+        """테스트 설정"""
+        # 테스트용 더미 이미지 생성
+        self.test_image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+        
+        # 모델 초기화 (모델 파일이 없는 경우 예외 처리)
+        try:
+            self.model = {feature_name.title().replace('_', '')}Model()
+        except FileNotFoundError:
+            self.skipTest("Model file not found")
+    
+    def test_model_initialization(self):
+        """모델 초기화 테스트"""
+        self.assertIsNotNone(self.model)
+        self.assertIsNotNone(self.model.session)
+    
+    def test_prediction(self):
+        """추론 테스트"""
+        results = self.model.predict(self.test_image)
+        self.assertIsInstance(results, list)
+    
+    def test_preprocessing(self):
+        """전처리 테스트"""
+        input_data = self.model._preprocess(self.test_image)
+        self.assertIsInstance(input_data, np.ndarray)
+    
+    def test_postprocessing(self):
+        """후처리 테스트"""
+        # 더미 출력 생성
+        dummy_outputs = [np.random.rand(1, 100, 100)]
+        results = self.model._postprocess(dummy_outputs)
+        self.assertIsInstance(results, list)
+
+if __name__ == '__main__':
+    unittest.main()
+'''
+            elif file_name == 'README.md':
+                content = f'''# {domain_name.title()} - {feature_name.title()}
+
+## 개요
+
+이 모듈은 {domain_name} 도메인의 {feature_name} 기능을 제공합니다.
+
+## 기능
+
+- 실시간 {feature_name} 추론
+- ONNX 모델 기반 처리
+- 크로스 플랫폼 호환성
+
+## 사용법
+
+### 기본 실행
+```bash
+python run.py
 ```
 
-### 다중 도메인 확장 계획
+### 카메라 지정
+```bash
+python run.py --source 1
+```
+
+### 이미지 파일
+```bash
+python run.py --source path/to/image.jpg
+```
+
+### 설정 파일 지정
+```bash
+python run.py --config config.yaml
+```
+
+## 파일 구조
+
+- `model.py`: ONNX 모델 클래스
+- `run.py`: 실시간 추론 실행
+- `test_model.py`: 단위 테스트
+
+## 요구사항
+
+- Python 3.10+
+- ONNX Runtime
+- OpenCV
+- NumPy
+'''
+            else:
+                content = ""
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+    
+    print(f"✓ Domain feature '{domain_name}/{feature_name}' created successfully")
+    print(f"✓ Created files: {{', '.join(required_files)}}")
+    print(f"✓ Location: {{domain_path}}")
+```
+
+### 다중 도메인 확장 계획 (CROSS_PLATFORM_COMPATIBILITY 호환)
 ```python
 # 향후 도메인 확장 로드맵
 DOMAIN_EXPANSION_ROADMAP = {
@@ -83,9 +453,14 @@ DOMAIN_EXPANSION_ROADMAP = {
         'priority': 'high',
         'estimated_timeline': '3-4 months',
         'dependencies': ['vision_core', 'monitoring_system'],
+        'features': [
+            'defect_detection',      # 불량 검출
+            'quality_assessment',    # 품질 평가
+            'classification'         # 분류
+        ],
         'requirements': {
             'hardware': ['industrial_cameras', 'lighting_system'],
-            'models': ['defect_detection', 'classification'],
+            'models': ['defect_detection.onnx', 'classification.onnx'],
             'data': ['factory_samples', 'defect_annotations']
         },
         'integration_points': [
@@ -98,9 +473,14 @@ DOMAIN_EXPANSION_ROADMAP = {
         'priority': 'medium',
         'estimated_timeline': '4-6 months',
         'dependencies': ['vision_core', 'drone_integration'],
+        'features': [
+            'inspection',           # 검사
+            'defect_detection',     # 결함 검출
+            'thermal_analysis'      # 열화상 분석
+        ],
         'requirements': {
             'hardware': ['drone_cameras', 'gps_module', 'thermal_camera'],
-            'models': ['powerline_detection', 'defect_classification', 'thermal_analysis'],
+            'models': ['powerline_detection.onnx', 'defect_classification.onnx'],
             'data': ['aerial_images', 'thermal_data', 'gps_coordinates']
         },
         'integration_points': [
@@ -113,9 +493,14 @@ DOMAIN_EXPANSION_ROADMAP = {
         'priority': 'low',
         'estimated_timeline': '6-8 months',
         'dependencies': ['vision_core', 'security_enhanced', 'privacy_compliance'],
+        'features': [
+            'anomaly_detection',    # 이상 검출
+            'segmentation',         # 세그멘테이션
+            'diagnosis_support'     # 진단 지원
+        ],
         'requirements': {
             'hardware': ['medical_scanners', 'dicom_compatible'],
-            'models': ['anomaly_detection', 'segmentation', 'diagnosis_support'],
+            'models': ['anomaly_detection.onnx', 'segmentation.onnx'],
             'data': ['medical_images', 'anonymized_datasets', 'expert_annotations']
         },
         'integration_points': [
@@ -127,7 +512,7 @@ DOMAIN_EXPANSION_ROADMAP = {
 }
 ```
 
-## 🔗 도메인 간 통신 시스템
+## 🔗 도메인 간 통신 시스템 (CROSS_PLATFORM_COMPATIBILITY 호환)
 
 ### 이벤트 기반 통신
 ```python
@@ -138,12 +523,14 @@ import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path  # CROSS_PLATFORM_COMPATIBILITY 필수
 
 @dataclass
 class DomainEvent:
     """도메인 이벤트 기본 클래스"""
     event_id: str
     domain: str
+    feature: str  # CROSS_PLATFORM_COMPATIBILITY 규칙에 맞춰 feature 추가
     event_type: str
     data: Dict[str, Any]
     timestamp: datetime
@@ -163,6 +550,11 @@ class EventBus:
         self.handlers: Dict[str, List[EventHandler]] = {}
         self.event_store: List[DomainEvent] = []
         
+        # 이벤트 로그 파일 경로 (CROSS_PLATFORM_COMPATIBILITY)
+        project_root = Path(__file__).parent.parent.parent
+        self.log_path = project_root / "data" / "runtime" / "logs" / "events.log"
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        
     def subscribe(self, event_type: str, handler: EventHandler):
         """이벤트 구독"""
         if event_type not in self.handlers:
@@ -174,6 +566,9 @@ class EventBus:
         # 이벤트 저장
         self.event_store.append(event)
         
+        # 이벤트 로그 기록
+        self._log_event(event)
+        
         # 핸들러들에게 이벤트 전달
         if event.event_type in self.handlers:
             tasks = [
@@ -182,15 +577,35 @@ class EventBus:
             ]
             await asyncio.gather(*tasks, return_exceptions=True)
     
+    def _log_event(self, event: DomainEvent):
+        """이벤트 로그 기록"""
+        try:
+            with open(self.log_path, 'a', encoding='utf-8') as f:
+                log_entry = {
+                    'timestamp': event.timestamp.isoformat(),
+                    'domain': event.domain,
+                    'feature': event.feature,
+                    'event_type': event.event_type,
+                    'data': event.data
+                }
+                f.write(json.dumps(log_entry) + '\n')
+        except Exception as e:
+            print(f"Failed to log event: {e}")
+    
     def get_events_by_domain(self, domain: str) -> List[DomainEvent]:
         """도메인별 이벤트 조회"""
         return [event for event in self.event_store if event.domain == domain]
+    
+    def get_events_by_feature(self, domain: str, feature: str) -> List[DomainEvent]:
+        """도메인/기능별 이벤트 조회"""
+        return [event for event in self.event_store 
+                if event.domain == domain and event.feature == feature]
 
 # 이벤트 버스 싱글톤 인스턴스
 event_bus = EventBus()
 ```
 
-### 도메인별 이벤트 정의
+### 도메인별 이벤트 정의 (CROSS_PLATFORM_COMPATIBILITY 호환)
 ```python
 # 얼굴인식 도메인 이벤트
 class FaceDetectedEvent(DomainEvent):
@@ -200,117 +615,38 @@ class FaceDetectedEvent(DomainEvent):
         super().__init__(
             event_id=f"face_detected_{int(time.time())}",
             domain="face_recognition",
+            feature="detection",  # CROSS_PLATFORM_COMPATIBILITY 규칙
             event_type="face_detected",
             data=face_data,
             timestamp=datetime.now()
         )
 
-class PersonRecognizedEvent(DomainEvent):
-    """인물 인식 이벤트"""
+class FaceRecognizedEvent(DomainEvent):
+    """얼굴 인식 이벤트"""
     
-    def __init__(self, person_data: Dict):
+    def __init__(self, recognition_data: Dict):
         super().__init__(
-            event_id=f"person_recognized_{int(time.time())}",
+            event_id=f"face_recognized_{int(time.time())}",
             domain="face_recognition",
-            event_type="person_recognized",
-            data=person_data,
+            feature="recognition",  # CROSS_PLATFORM_COMPATIBILITY 규칙
+            event_type="face_recognized",
+            data=recognition_data,
             timestamp=datetime.now()
         )
 
 # 공장 불량 검출 도메인 이벤트 (향후)
 class DefectDetectedEvent(DomainEvent):
-    """불량 감지 이벤트"""
+    """불량 검출 이벤트"""
     
     def __init__(self, defect_data: Dict):
         super().__init__(
             event_id=f"defect_detected_{int(time.time())}",
             domain="factory_defect",
+            feature="defect_detection",  # CROSS_PLATFORM_COMPATIBILITY 규칙
             event_type="defect_detected",
             data=defect_data,
             timestamp=datetime.now()
         )
-
-# 전선 검사 도메인 이벤트 (향후)
-class PowerlineAnomalyEvent(DomainEvent):
-    """전선 이상 감지 이벤트"""
-    
-    def __init__(self, anomaly_data: Dict):
-        super().__init__(
-            event_id=f"powerline_anomaly_{int(time.time())}",
-            domain="powerline_inspection",
-            event_type="powerline_anomaly",
-            data=anomaly_data,
-            timestamp=datetime.now()
-        )
-```
-
-### 도메인 간 데이터 공유
-```python
-# shared/data/domain_data_manager.py
-class DomainDataManager:
-    """도메인 간 데이터 공유 관리"""
-    
-    def __init__(self):
-        self.shared_cache = {}
-        self.data_contracts = {}
-    
-    def register_data_contract(self, contract_name: str, schema: Dict):
-        """데이터 계약 등록"""
-        self.data_contracts[contract_name] = schema
-    
-    def share_data(self, contract_name: str, data: Dict, source_domain: str):
-        """데이터 공유"""
-        if contract_name not in self.data_contracts:
-            raise ValueError(f"Unknown data contract: {contract_name}")
-        
-        # 스키마 검증
-        if not self._validate_schema(data, self.data_contracts[contract_name]):
-            raise ValueError("Data does not match contract schema")
-        
-        # 공유 캐시에 저장
-        self.shared_cache[contract_name] = {
-            'data': data,
-            'source_domain': source_domain,
-            'timestamp': datetime.now()
-        }
-    
-    def get_shared_data(self, contract_name: str) -> Dict:
-        """공유 데이터 조회"""
-        if contract_name not in self.shared_cache:
-            return None
-        return self.shared_cache[contract_name]
-    
-    def _validate_schema(self, data: Dict, schema: Dict) -> bool:
-        """스키마 검증"""
-        # 간단한 스키마 검증 구현
-        for field, field_type in schema.items():
-            if field not in data:
-                return False
-            if not isinstance(data[field], field_type):
-                return False
-        return True
-
-# 데이터 계약 정의
-DATA_CONTRACTS = {
-    'detected_object': {
-        'bbox': list,           # [x, y, width, height]
-        'confidence': float,    # 0.0 ~ 1.0
-        'class_name': str,      # 객체 클래스명
-        'timestamp': str        # ISO 8601 형식
-    },
-    'processing_result': {
-        'success': bool,        # 처리 성공 여부
-        'processing_time': float, # 처리 시간 (초)
-        'result_data': dict,    # 결과 데이터
-        'error_message': str    # 에러 메시지 (있는 경우)
-    },
-    'quality_metrics': {
-        'accuracy': float,      # 정확도
-        'precision': float,     # 정밀도
-        'recall': float,        # 재현율
-        'f1_score': float      # F1 스코어
-    }
-}
 ```
 
 ## 🔄 공유 모듈 확장 관리

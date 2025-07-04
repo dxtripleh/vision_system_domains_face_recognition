@@ -1,0 +1,27 @@
+{
+  "1_raw": {
+    "status": "completed",
+    "files_count": 2,
+    "completed_at": "2025-07-03T23:03:37.039874"
+  },
+  "2_extracted": {
+    "status": "completed",
+    "files_count": 4,
+    "completed_at": "2025-07-03T23:13:52.571111"
+  },
+  "3_clustered": {
+    "status": "pending",
+    "files_count": 0
+  },
+  "4_labeled": {
+    "status": "pending",
+    "files_count": 0
+  },
+  "5_embeddings": {
+    "status": "pending",
+    "files_count": 0
+  },
+  "metadata": {
+    "last_updated": "2025-07-03T23:13:52.572113"
+  }
+}
